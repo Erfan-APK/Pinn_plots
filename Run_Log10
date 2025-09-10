@@ -1,0 +1,78 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/Pinn2.py 
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Initial loss dict (smoke): {'L_total': 0.4021648168563843, 'L_pde': 0.008066108450293541, 'L_wall': 0.009656406939029694, 'L_inlet': 0.12840993702411652, 'L_out': 0.0011919091921299696, 'L_periodic': 0.008397161960601807, 'L_psi_periodic': 0.006284247152507305, 'L_u_periodic': 0.0002542213478591293, 'L_v_periodic': 1.0410918548586778e-05, 'L_p_anchor': 0.0008795229950919747}
+Loaded checkpoint 'checkpoints/best_model.pt' (step=1)
+Resumed from checkpoint. LR after load: 0.0005
+Starting training for 5000 steps; batch_domain=5000, batch_boundary=1000
+[step 000100] L_total=2.620e+00 L_pde=2.946e-04 L_wall=8.868e-04 L_in=5.416e-02 L_out=6.337e-05 L_per=6.755e-04 L_u_per=3.866e-03 L_v_per=3.906e-03 LR=5.000e-04
+Saved best model (L_total=2.620e+00): checkpoints/best_model.pt
+[step 000200] L_total=4.199e+00 L_pde=1.717e-03 L_wall=1.962e-03 L_in=3.738e-02 L_out=3.704e-05 L_per=1.516e-03 L_u_per=1.117e-04 L_v_per=5.989e-03 LR=4.999e-04
+[step 000300] L_total=5.601e+00 L_pde=2.522e-03 L_wall=2.233e-03 L_in=3.866e-02 L_out=5.338e-05 L_per=2.418e-03 L_u_per=6.014e-05 L_v_per=5.738e-03 LR=4.997e-04
+[step 000400] L_total=5.916e+00 L_pde=3.133e-03 L_wall=4.406e-03 L_in=3.240e-02 L_out=5.682e-05 L_per=2.582e-03 L_u_per=4.540e-05 L_v_per=5.867e-03 LR=4.995e-04
+[step 000500] L_total=5.495e+00 L_pde=2.134e-03 L_wall=2.690e-03 L_in=3.747e-02 L_out=6.313e-05 L_per=1.886e-03 L_u_per=8.081e-05 L_v_per=5.934e-03 LR=4.992e-04
+[step 000600] L_total=5.180e+00 L_pde=2.259e-03 L_wall=3.483e-03 L_in=3.023e-02 L_out=1.766e-05 L_per=1.784e-03 L_u_per=1.190e-05 L_v_per=5.936e-03 LR=4.989e-04
+[step 000700] L_total=5.398e+00 L_pde=2.181e-03 L_wall=2.902e-03 L_in=3.639e-02 L_out=4.397e-05 L_per=1.942e-03 L_u_per=7.803e-06 L_v_per=5.859e-03 LR=4.985e-04
+[step 000800] L_total=5.678e+00 L_pde=2.216e-03 L_wall=3.163e-03 L_in=3.905e-02 L_out=1.609e-05 L_per=1.838e-03 L_u_per=2.331e-05 L_v_per=6.022e-03 LR=4.980e-04
+[step 000900] L_total=4.835e+00 L_pde=2.454e-03 L_wall=3.131e-03 L_in=3.092e-02 L_out=7.979e-06 L_per=1.800e-03 L_u_per=1.007e-05 L_v_per=5.978e-03 LR=4.975e-04
+[step 001000] L_total=4.907e+00 L_pde=3.959e-03 L_wall=2.515e-03 L_in=3.092e-02 L_out=1.992e-04 L_per=1.959e-03 L_u_per=7.726e-04 L_v_per=6.254e-03 LR=4.969e-04
+Saved checkpoint: checkpoints/ckpt_step_001000.pt
+Saved diagnostics to diagnostics_step_001000.png
+[step 001100] L_total=4.129e+00 L_pde=1.964e-02 L_wall=1.082e-03 L_in=2.176e-02 L_out=3.180e-04 L_per=3.390e-03 L_u_per=1.159e-02 L_v_per=8.180e-03 LR=4.963e-04
+[step 001200] L_total=3.165e+00 L_pde=6.544e-02 L_wall=1.300e-03 L_in=1.584e-02 L_out=1.126e-05 L_per=2.644e-03 L_u_per=2.312e-03 L_v_per=8.367e-03 LR=4.956e-04
+[step 001300] L_total=3.074e+00 L_pde=8.734e-02 L_wall=1.389e-03 L_in=1.503e-02 L_out=1.597e-05 L_per=2.602e-03 L_u_per=2.260e-03 L_v_per=8.240e-03 LR=4.948e-04
+[step 001400] L_total=3.154e+00 L_pde=9.300e-02 L_wall=1.255e-03 L_in=1.681e-02 L_out=2.319e-05 L_per=2.432e-03 L_u_per=2.409e-03 L_v_per=7.658e-03 LR=4.940e-04
+[step 001500] L_total=3.142e+00 L_pde=9.809e-02 L_wall=1.257e-03 L_in=1.720e-02 L_out=4.702e-05 L_per=2.405e-03 L_u_per=2.060e-03 L_v_per=7.592e-03 LR=4.931e-04
+[step 001600] L_total=3.055e+00 L_pde=9.398e-02 L_wall=1.328e-03 L_in=1.688e-02 L_out=9.040e-05 L_per=2.293e-03 L_u_per=1.986e-03 L_v_per=7.221e-03 LR=4.922e-04
+[step 001700] L_total=2.914e+00 L_pde=8.211e-02 L_wall=1.280e-03 L_in=1.657e-02 L_out=3.423e-05 L_per=2.168e-03 L_u_per=2.243e-03 L_v_per=6.838e-03 LR=4.912e-04
+[step 001800] L_total=3.417e+00 L_pde=7.882e-02 L_wall=1.745e-03 L_in=2.095e-02 L_out=2.426e-05 L_per=2.173e-03 L_u_per=2.349e-03 L_v_per=6.847e-03 LR=4.901e-04
+[step 001900] L_total=2.653e+00 L_pde=7.333e-02 L_wall=1.424e-03 L_in=1.411e-02 L_out=7.075e-06 L_per=2.116e-03 L_u_per=2.124e-03 L_v_per=6.696e-03 LR=4.890e-04
+[step 002000] L_total=2.721e+00 L_pde=7.013e-02 L_wall=1.087e-03 L_in=1.640e-02 L_out=4.015e-06 L_per=1.916e-03 L_u_per=2.005e-03 L_v_per=6.047e-03 LR=4.878e-04
+Saved checkpoint: checkpoints/ckpt_step_002000.pt
+Saved diagnostics to diagnostics_step_002000.png
+[step 002100] L_total=2.676e+00 L_pde=7.390e-02 L_wall=5.164e-04 L_in=9.914e-03 L_out=1.559e-03 L_per=2.335e-03 L_u_per=1.548e-03 L_v_per=6.816e-03 LR=4.866e-04
+[step 002200] L_total=2.218e+00 L_pde=6.752e-02 L_wall=9.493e-04 L_in=9.260e-03 L_out=3.235e-05 L_per=1.890e-03 L_u_per=1.393e-03 L_v_per=6.056e-03 LR=4.853e-04
+Saved best model (L_total=2.218e+00): checkpoints/best_model.pt
+[step 002300] L_total=2.557e+00 L_pde=6.686e-02 L_wall=8.864e-04 L_in=1.357e-02 L_out=9.812e-06 L_per=1.775e-03 L_u_per=1.134e-03 L_v_per=5.719e-03 LR=4.839e-04
+[step 002400] L_total=3.297e+00 L_pde=6.946e-02 L_wall=2.126e-03 L_in=1.190e-02 L_out=2.186e-03 L_per=2.045e-03 L_u_per=1.345e-03 L_v_per=6.107e-03 LR=4.825e-04
+[step 002500] L_total=2.551e+00 L_pde=6.451e-02 L_wall=2.226e-04 L_in=1.094e-02 L_out=3.372e-04 L_per=3.523e-03 L_u_per=9.953e-04 L_v_per=5.326e-03 LR=4.810e-04
+[step 002600] L_total=3.017e+00 L_pde=7.314e-02 L_wall=2.511e-04 L_in=1.925e-02 L_out=1.031e-04 L_per=2.243e-03 L_u_per=1.621e-03 L_v_per=5.589e-03 LR=4.795e-04
+[step 002700] L_total=2.630e+00 L_pde=6.238e-02 L_wall=5.646e-04 L_in=1.639e-02 L_out=2.612e-05 L_per=1.863e-03 L_u_per=5.045e-04 L_v_per=5.546e-03 LR=4.779e-04
+[step 002800] L_total=2.109e+00 L_pde=6.903e-02 L_wall=5.304e-04 L_in=1.238e-02 L_out=5.190e-06 L_per=1.563e-03 L_u_per=6.962e-04 L_v_per=5.067e-03 LR=4.763e-04
+Saved best model (L_total=2.109e+00): checkpoints/best_model.pt
+[step 002900] L_total=2.259e+00 L_pde=7.516e-02 L_wall=8.219e-04 L_in=1.207e-02 L_out=4.027e-05 L_per=1.763e-03 L_u_per=1.046e-03 L_v_per=5.575e-03 LR=4.746e-04
+[step 003000] L_total=2.493e+00 L_pde=8.297e-02 L_wall=6.884e-05 L_in=1.310e-02 L_out=2.215e-04 L_per=2.488e-03 L_u_per=6.219e-04 L_v_per=4.963e-03 LR=4.728e-04
+Saved checkpoint: checkpoints/ckpt_step_003000.pt
+Saved diagnostics to diagnostics_step_003000.png
+[step 003100] L_total=2.067e+00 L_pde=9.138e-02 L_wall=1.640e-04 L_in=1.115e-02 L_out=6.906e-04 L_per=1.567e-03 L_u_per=4.978e-04 L_v_per=4.704e-03 LR=4.710e-04
+Saved best model (L_total=2.067e+00): checkpoints/best_model.pt
+[step 003200] L_total=2.602e+00 L_pde=1.066e-01 L_wall=8.592e-05 L_in=1.638e-02 L_out=1.077e-03 L_per=1.451e-03 L_u_per=2.395e-03 L_v_per=3.668e-03 LR=4.692e-04
+[step 003300] L_total=2.119e+00 L_pde=1.222e-01 L_wall=7.521e-04 L_in=1.363e-02 L_out=9.170e-06 L_per=1.170e-03 L_u_per=8.856e-04 L_v_per=3.470e-03 LR=4.672e-04
+[step 003400] L_total=2.762e+00 L_pde=1.495e-01 L_wall=3.713e-04 L_in=1.395e-02 L_out=1.528e-03 L_per=2.574e-03 L_u_per=3.508e-03 L_v_per=3.092e-03 LR=4.653e-04
+[step 003500] L_total=2.316e+00 L_pde=1.384e-01 L_wall=1.527e-03 L_in=1.109e-02 L_out=5.517e-06 L_per=1.707e-03 L_u_per=3.760e-03 L_v_per=4.934e-03 LR=4.633e-04
+[step 003600] L_total=1.926e+00 L_pde=1.479e-01 L_wall=7.351e-04 L_in=9.938e-03 L_out=2.604e-05 L_per=1.371e-03 L_u_per=8.900e-04 L_v_per=4.253e-03 LR=4.612e-04
+Saved best model (L_total=1.926e+00): checkpoints/best_model.pt
+[step 003700] L_total=2.313e+00 L_pde=1.605e-01 L_wall=1.138e-03 L_in=1.213e-02 L_out=1.665e-05 L_per=1.242e-03 L_u_per=4.481e-03 L_v_per=3.271e-03 LR=4.591e-04
+[step 003800] L_total=1.936e+00 L_pde=1.654e-01 L_wall=4.500e-04 L_in=9.739e-03 L_out=2.685e-06 L_per=1.365e-03 L_u_per=8.835e-04 L_v_per=4.267e-03 LR=4.569e-04
+[step 003900] L_total=2.115e+00 L_pde=1.745e-01 L_wall=3.185e-04 L_in=1.448e-02 L_out=8.130e-05 L_per=9.491e-04 L_u_per=5.646e-04 L_v_per=2.955e-03 LR=4.547e-04
+[step 004000] L_total=2.059e+00 L_pde=1.774e-01 L_wall=4.297e-04 L_in=1.025e-02 L_out=3.737e-06 L_per=1.220e-03 L_u_per=2.119e-03 L_v_per=3.609e-03 LR=4.524e-04
+Saved checkpoint: checkpoints/ckpt_step_004000.pt
+Saved diagnostics to diagnostics_step_004000.png
+[step 004100] L_total=1.693e+00 L_pde=1.748e-01 L_wall=6.651e-05 L_in=1.021e-02 L_out=4.644e-05 L_per=9.419e-04 L_u_per=8.510e-04 L_v_per=2.764e-03 LR=4.500e-04
+Saved best model (L_total=1.693e+00): checkpoints/best_model.pt
+[step 004200] L_total=2.345e+00 L_pde=1.777e-01 L_wall=8.248e-05 L_in=1.629e-02 L_out=2.127e-05 L_per=1.302e-03 L_u_per=4.464e-03 L_v_per=2.878e-03 LR=4.477e-04
+[step 004300] L_total=2.080e+00 L_pde=2.016e-01 L_wall=1.026e-04 L_in=1.534e-02 L_out=2.659e-04 L_per=7.723e-04 L_u_per=2.878e-04 L_v_per=1.760e-03 LR=4.452e-04
+[step 004400] L_total=1.835e+00 L_pde=1.787e-01 L_wall=2.659e-05 L_in=1.202e-02 L_out=6.560e-06 L_per=9.558e-04 L_u_per=1.257e-03 L_v_per=2.738e-03 LR=4.428e-04
+[step 004500] L_total=2.164e+00 L_pde=1.784e-01 L_wall=4.018e-05 L_in=1.319e-02 L_out=5.608e-05 L_per=1.376e-03 L_u_per=1.797e-03 L_v_per=3.287e-03 LR=4.402e-04
+[step 004600] L_total=2.231e+00 L_pde=1.561e-01 L_wall=5.256e-05 L_in=1.284e-02 L_out=7.371e-05 L_per=1.633e-03 L_u_per=9.850e-03 L_v_per=3.620e-03 LR=4.377e-04
+[step 004700] L_total=1.860e+00 L_pde=1.764e-01 L_wall=4.168e-05 L_in=1.137e-02 L_out=2.651e-04 L_per=8.647e-04 L_u_per=2.817e-04 L_v_per=2.733e-03 LR=4.351e-04
+[step 004800] L_total=1.713e+00 L_pde=1.602e-01 L_wall=1.067e-04 L_in=1.020e-02 L_out=1.089e-05 L_per=9.686e-04 L_u_per=1.351e-03 L_v_per=2.812e-03 LR=4.324e-04
+[step 004900] L_total=2.051e+00 L_pde=1.648e-01 L_wall=6.962e-05 L_in=1.069e-02 L_out=3.556e-04 L_per=1.206e-03 L_u_per=1.249e-03 L_v_per=3.569e-03 LR=4.297e-04
+[step 005000] L_total=2.423e+00 L_pde=1.900e-01 L_wall=1.303e-03 L_in=1.350e-02 L_out=1.002e-04 L_per=1.625e-03 L_u_per=1.255e-02 L_v_per=3.241e-03 LR=4.270e-04
+Saved checkpoint: checkpoints/ckpt_step_005000.pt
+Saved diagnostics to diagnostics_step_005000.png
+Saved diagnostics to diagnostics_after_quick.png
+Quick-run Cl=7.5890e-03, Cd=-1.2861e-03
+
+Process finished with exit code 0
