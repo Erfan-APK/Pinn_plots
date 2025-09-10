@@ -90,6 +90,10 @@ class PINN(nn.Module):
         self.register_buffer('x_scale', torch.tensor(0.5 * (x_max - x_min), dtype=torch.float32))
         self.register_buffer('y_mean', torch.tensor(0.5 * (y_min + y_max), dtype=torch.float32))
         self.register_buffer('y_scale', torch.tensor(0.5 * (y_max - y_min), dtype=torch.float32))
+        # Output scaling (helps conditioning)
+        # For nondimensional U_inf=1 and chord=1: psi_scale = U*c = 1, p_scale = U^2 = 1
+        self.register_buffer('psi_scale', torch.tensor(1.0, dtype=torch.float32))
+        self.register_buffer('p_scale', torch.tensor(1.0, dtype=torch.float32))
 
         # Build MLP - last layer produces 2 outputs: psi and p
         modules = []
@@ -623,7 +627,8 @@ class CascadeFlowSolver:
             cont = u_x + v_y
 
             # scalar residual
-            r = (mx_fo ** 2 + my_fo ** 2 + cont ** 2).view(-1, -1).mean(dim=1)
+            r = (mx_fo**2 + my_fo**2 + cont**2).view(-1).mean(dim=0, keepdim=True)
+
             residuals.append(r.detach().cpu().view(-1))
 
         if len(residuals) == 0:
@@ -632,26 +637,42 @@ class CascadeFlowSolver:
         r_all = torch.cat(residuals, dim=0)  # 1D CPU tensor
         return r_all
 
-
     def farthest_subsample(self, x_pts, y_pts, k_select):
         """
         Greedy farthest-point subsampling to improve spatial diversity.
-        x_pts, y_pts: column tensors on device. Returns subsampled (x,y) with k_select rows.
+        Accepts x_pts, y_pts as either shapes (N,) or (N,1) on any device.
+        Returns subsampled (x,y) as column tensors with k_select rows.
         """
-        if x_pts.shape[0] <= k_select:
-            return x_pts, y_pts
+        # Ensure column shape (N,1)
+        if x_pts.dim() == 1:
+            x_pts = x_pts.unsqueeze(1)
+        if y_pts.dim() == 1:
+            y_pts = y_pts.unsqueeze(1)
 
-        pts = torch.cat([x_pts, y_pts], dim=1).detach().cpu().numpy()
-        selected = [0]
+        n = x_pts.shape[0]
+        # If not enough points, return original (but ensure shape)
+        if n <= k_select:
+            return x_pts.clone(), y_pts.clone()
+
+        # Move to CPU numpy for efficient distance ops
+        pts = torch.cat([x_pts, y_pts], dim=1).detach().cpu().numpy()  # shape (N,2)
+
+        # Randomized start to avoid deterministic bias
+        first = np.random.randint(0, n)
+        selected = [first]
+
+        # distances to the selected set
         dists = np.linalg.norm(pts - pts[selected[0]], axis=1)
+
         while len(selected) < k_select:
             idx = int(np.argmax(dists))
             selected.append(idx)
+            # update distances (elementwise min)
             dnew = np.linalg.norm(pts - pts[idx], axis=1)
             dists = np.minimum(dists, dnew)
+
         idx_tensor = torch.tensor(selected, device=x_pts.device, dtype=torch.long)
         return x_pts[idx_tensor], y_pts[idx_tensor]
-
 
     def compute_losses(self, points):
         x_dom, y_dom = points['domain']
@@ -705,7 +726,7 @@ class CascadeFlowSolver:
 
         psi_top, p_top = self.model(x_per, y_top)
         psi_bot, p_bot = self.model(x_per, y_bot)
-        
+
 
         # velocities from psi
         u_top = torch.autograd.grad(psi_top, y_top, torch.ones_like(psi_top), retain_graph=True, create_graph=True)[0]
@@ -716,7 +737,11 @@ class CascadeFlowSolver:
         # prefer velocities + small psi continuity (psi difference is often gauge-like; keep small weight)
         periodic_vel_loss = torch.mean((u_top - u_bot) ** 2 + (v_top - v_bot) ** 2)
         periodic_psi_loss = torch.mean((psi_top - psi_bot) ** 2) * 0.01  # tiny weight for psi offset consistency
-        periodic_loss = periodic_vel_loss + periodic_psi_loss
+        # --- Pressure periodic consistency (small penalty to align pressure gauge across periodic sides)
+        # This prevents a pressure offset between top and bottom periodic boundaries
+        # (small weight; tune later in Stage A).
+        p_per_loss = torch.mean((p_top - p_bot) ** 2) * 0.1
+        periodic_loss = periodic_vel_loss + periodic_psi_loss + p_per_loss
 
         # --- Pressure gauge: small penalty on mean inlet pressure to fix gauge
         p_in_mean = torch.mean(p_in)
@@ -948,10 +973,31 @@ class CascadeFlowSolver:
                     x_unif = torch.empty((0, 1), device=device)
                     y_unif = torch.empty((0, 1), device=device)
 
+                # Ensure all point arrays are column tensors (N,1) before concatenation
+                if x_top.dim() == 1:
+                    x_top = x_top.unsqueeze(1)
+                if y_top.dim() == 1:
+                    y_top = y_top.unsqueeze(1)
+                if x_unif.dim() == 1:
+                    x_unif = x_unif.unsqueeze(1)
+                if y_unif.dim() == 1:
+                    y_unif = y_unif.unsqueeze(1)
+
+                # Safety: if any are empty 1-D tensors, convert to shape (0,1)
+                if x_top.numel() == 0:
+                    x_top = torch.empty((0, 1), device=device)
+                if y_top.numel() == 0:
+                    y_top = torch.empty((0, 1), device=device)
+                if x_unif.numel() == 0:
+                    x_unif = torch.empty((0, 1), device=device)
+                if y_unif.numel() == 0:
+                    y_unif = torch.empty((0, 1), device=device)
+
                 # new domain pool (concatenate residual-first then uniform)
                 x_new = torch.cat([x_top, x_unif], dim=0)[:self.pool_domain_size]
                 y_new = torch.cat([y_top, y_unif], dim=0)[:self.pool_domain_size]
                 pool['domain'] = (x_new, y_new)
+
                 print(f"    [resample done] top-residual pts: {x_top.shape[0]}, uniform pts: {x_unif.shape[0]}")
 
         print(f"\nTraining completed in {time.time() - start_time:.1f} seconds")
@@ -1236,15 +1282,15 @@ def main():
         chord=1.0,
         solidity=1.0,
         use_residual_adaptive=True,
-        resample_every=200,
-        pool_domain_size=64000,  # doubled from 40k -> 64k
-        pool_boundary_size=16000,  # doubled from 8k -> 16k
+        resample_every=100,       # was 50
+        pool_domain_size=8000,
+        pool_boundary_size=2000,  # doubled from 8k -> 16k
         hybrid_fraction=0.3,
         n_cand_max=16000,  # increase candidate pool for better adaptive sampling
         cand_batch_size=512  # chunk size for residual eval (increase if memory allows)
     )
 
-    solver.train(epochs=15000, print_every=200, batch_dom=4096, batch_bnd=1024)
+    solver.train(epochs=600, print_every=100, batch_dom=2048, batch_bnd=512)
 
     fig = solver.visualize_results(save_figs=True)
 
