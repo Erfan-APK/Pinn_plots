@@ -8,11 +8,11 @@ Solver created.
 Loading checkpoint: checkpoints/best_model.pt
 Model moved to device: cuda
 Domain extents: -2.0 6.0 -0.5 0.5
-Domain residual (mean,std): 0.14588646590709686 0.3546450436115265
-Seam psi L2 mean: 0.0195094496011734 psi RMS: 0.13967622816562653
-Seam p   L2 mean: 2.743138313293457 p RMS: 1.6562422513961792
-Inlet psi anchor L2 mean / RMS: 0.0809188187122345 0.2844623327255249
-Outlet p anchor L2 mean / RMS: 0.004625890403985977 0.06801389902830124
+Domain residual (mean,std): 0.09513984620571136 0.20687809586524963
+Seam psi L2 mean: 0.049208011478185654 psi RMS: 0.22182878851890564
+Seam p   L2 mean: 2.835052490234375 p RMS: 1.6837613582611084
+Inlet psi anchor L2 mean / RMS: 0.016032125800848007 0.12661802768707275
+Outlet p anchor L2 mean / RMS: 1.3704686807614053e-06 0.00117067014798522
 
 Interpretation hints:
  - If psi RMS (L_psi_rms) is much larger than domain residual magnitude, increase w_psi_periodic or number of seam pairs.
