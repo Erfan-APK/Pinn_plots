@@ -1,58 +1,53 @@
-/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/edit by gpt/eight/eightSecond/second.py 
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/sec.py 
 Using device: cuda
 GPU: NVIDIA GeForce RTX 3080
 Memory Allocated: 0.00 MB
-============================================================
-PINN Simulation: NACA 0012 Cascade Flow
-============================================================
-Reynolds number: Re = 200
-Chord length: c = 1.0
-Solidity: σ = 1.0
-Angle of attack: α = 0°
-============================================================
-Starting training...
-Epoch 50/200, Time: 6.0s, LR: 5.00e-04
-  Total: 1.999335 | Phys: 0.000113 | Inlet: 0.004594 | Outlet: 0.000022 | Foil: 0.606852 | Periodic: 0.000589
-    mean |p_top-p_bot| = 2.061e-03
-    [dbg] near-wall residuals (N=512): mean=6.353e-04, max=7.165e-03
-Epoch 100/200, Time: 9.8s, LR: 5.00e-04
-  Total: 1.245935 | Phys: 0.004467 | Inlet: 0.009121 | Outlet: 0.009401 | Foil: 0.221745 | Periodic: 0.031611
-    mean |p_top-p_bot| = 6.896e-03
-    [dbg] near-wall residuals (N=512): mean=1.802e-03, max=1.844e-02
-  [resample] epoch 100: evaluating up to 4000 candidate points in batches of 256
-    candidates after filtering: 4000
-    residuals computed: 4000 (expected 4000)
-    selected top 2000 residual points (pre-thinning)
-    after thinning, top-residual points: 1000
-    [resample done] top-residual pts: 1000, uniform pts: 3000
-Epoch 150/200, Time: 27.7s, LR: 5.00e-04
-  Total: 0.162127 | Phys: 0.018012 | Inlet: 0.005364 | Outlet: 0.000880 | Foil: 0.022181 | Periodic: 0.000204
-    mean |p_top-p_bot| = 1.432e-02
-    [dbg] near-wall residuals (N=512): mean=2.281e-03, max=1.085e-02
-Epoch 200/200, Time: 30.9s, LR: 5.00e-04
-  Total: 0.131129 | Phys: 0.020305 | Inlet: 0.005955 | Outlet: 0.000827 | Foil: 0.008467 | Periodic: 0.000072
-    mean |p_top-p_bot| = 2.878e-03
-    [dbg] near-wall residuals (N=512): mean=5.005e-04, max=2.714e-03
-  [resample] epoch 200: evaluating up to 4000 candidate points in batches of 256
-    candidates after filtering: 4000
-    residuals computed: 3998 (expected 4000)
-    selected top 2000 residual points (pre-thinning)
-    after thinning, top-residual points: 1000
-    [resample done] top-residual pts: 1000, uniform pts: 3000
-
-Training completed in 44.9 seconds
-
-Generating visualizations...
-Results saved to 'cascade_flow_results.png'
-
-Force Coefficients:...
-  Lift coefficient (Cl): 0.004213
-  Drag coefficient (Cd): 0.056546
-  L/D ratio: 0.07
-
-============================================================
-Analysis Complete!
-============================================================
-Saved diagnostics to diagnostics.png
+Initial loss dict (smoke): {'L_total': 0.15079492330551147, 'L_pde': 0.008565193973481655, 'L_wall': 0.009656406939029694, 'L_inlet': 0.12840993702411652, 'L_out': 0.0011919091921299696, 'L_periodic': 0.008650053292512894, 'L_psi_periodic': 0.006284247152507305, 'L_p_anchor': 0.0008795229950919747}
+Starting training for 20000 steps; batch_domain=20000, batch_boundary=4000
+[step 000001] L_total=1.508e-01 L_pde=8.564e-03 L_wall=9.656e-03 L_in=1.347e-01 L_out=1.293e-03 L_per=8.650e-03
+[step 000500] L_total=2.425e+00 L_pde=2.543e-03 L_wall=5.150e-03 L_in=1.695e-02 L_out=1.103e-03 L_per=2.076e-02
+[step 001000] L_total=8.441e+00 L_pde=1.535e-02 L_wall=4.455e-04 L_in=1.398e-03 L_out=9.694e-04 L_per=1.485e-01
+[step 001500] L_total=7.984e+00 L_pde=2.653e-02 L_wall=1.068e-04 L_in=8.445e-04 L_out=5.681e-04 L_per=1.467e-01
+[step 002000] L_total=9.466e+00 L_pde=2.135e-02 L_wall=4.995e-04 L_in=1.724e-03 L_out=1.194e-05 L_per=1.784e-01
+[step 002500] L_total=1.155e+01 L_pde=2.440e-02 L_wall=8.098e-04 L_in=7.327e-04 L_out=2.258e-06 L_per=2.213e-01
+[step 003000] L_total=1.592e+01 L_pde=1.311e-02 L_wall=3.947e-05 L_in=4.035e-03 L_out=5.254e-03 L_per=2.861e-01
+[step 003500] L_total=1.590e+01 L_pde=1.411e-02 L_wall=2.275e-05 L_in=1.573e-03 L_out=2.183e-06 L_per=3.110e-01
+[step 004000] L_total=1.748e+01 L_pde=1.691e-02 L_wall=3.505e-06 L_in=4.608e-04 L_out=1.285e-05 L_per=3.454e-01
+[step 004500] L_total=1.818e+01 L_pde=1.715e-02 L_wall=1.478e-06 L_in=2.193e-04 L_out=2.604e-04 L_per=3.591e-01
+[step 005000] L_total=1.884e+01 L_pde=1.604e-02 L_wall=2.051e-06 L_in=1.036e-03 L_out=9.287e-06 L_per=3.720e-01
+[step 005500] L_total=1.932e+01 L_pde=1.676e-02 L_wall=7.554e-07 L_in=2.847e-04 L_out=5.064e-06 L_per=3.832e-01
+[step 006000] L_total=1.946e+01 L_pde=1.614e-02 L_wall=4.419e-07 L_in=6.369e-04 L_out=5.179e-05 L_per=3.852e-01
+[step 006500] L_total=1.961e+01 L_pde=1.633e-02 L_wall=3.831e-07 L_in=4.118e-04 L_out=3.028e-05 L_per=3.888e-01
+[step 007000] L_total=2.079e+01 L_pde=1.677e-02 L_wall=8.652e-07 L_in=6.426e-04 L_out=3.866e-07 L_per=4.119e-01
+[step 007500] L_total=2.086e+01 L_pde=1.657e-02 L_wall=2.831e-07 L_in=3.635e-04 L_out=2.204e-05 L_per=4.139e-01
+[step 008000] L_total=2.111e+01 L_pde=1.623e-02 L_wall=5.886e-07 L_in=4.219e-04 L_out=2.221e-06 L_per=4.188e-01
+[step 008500] L_total=2.100e+01 L_pde=1.550e-02 L_wall=6.065e-07 L_in=4.093e-04 L_out=9.742e-06 L_per=4.168e-01
+[step 009000] L_total=2.177e+01 L_pde=1.484e-02 L_wall=9.694e-07 L_in=4.924e-04 L_out=2.706e-06 L_per=4.321e-01
+[step 009500] L_total=2.218e+01 L_pde=1.420e-02 L_wall=5.477e-07 L_in=2.976e-04 L_out=6.905e-06 L_per=4.408e-01
+[step 010000] L_total=2.257e+01 L_pde=1.343e-02 L_wall=3.560e-07 L_in=3.735e-04 L_out=4.078e-07 L_per=4.485e-01
+[step 010500] L_total=2.277e+01 L_pde=1.268e-02 L_wall=1.575e-07 L_in=3.021e-04 L_out=1.041e-05 L_per=4.526e-01
+[step 011000] L_total=2.351e+01 L_pde=1.230e-02 L_wall=7.935e-08 L_in=2.622e-04 L_out=6.689e-07 L_per=4.676e-01
+[step 011500] L_total=2.450e+01 L_pde=1.165e-02 L_wall=1.214e-07 L_in=2.640e-04 L_out=4.622e-09 L_per=4.876e-01
+[step 012000] L_total=2.493e+01 L_pde=1.090e-02 L_wall=1.464e-07 L_in=3.235e-04 L_out=1.024e-07 L_per=4.961e-01
+[step 012500] L_total=2.571e+01 L_pde=1.012e-02 L_wall=1.503e-07 L_in=2.130e-04 L_out=2.556e-08 L_per=5.120e-01
+[step 013000] L_total=2.657e+01 L_pde=9.502e-03 L_wall=1.377e-07 L_in=2.958e-04 L_out=1.948e-05 L_per=5.291e-01
+[step 013500] L_total=2.581e+01 L_pde=8.058e-03 L_wall=4.584e-08 L_in=2.457e-04 L_out=3.665e-09 L_per=5.142e-01
+[step 014000] L_total=2.682e+01 L_pde=8.339e-03 L_wall=3.504e-07 L_in=4.857e-04 L_out=4.115e-05 L_per=5.336e-01
+[step 014500] L_total=2.648e+01 L_pde=7.717e-03 L_wall=4.954e-08 L_in=2.729e-04 L_out=1.694e-07 L_per=5.275e-01
+[step 015000] L_total=2.720e+01 L_pde=7.968e-03 L_wall=8.084e-08 L_in=1.900e-04 L_out=2.809e-06 L_per=5.422e-01
+[step 015500] L_total=2.877e+01 L_pde=8.357e-03 L_wall=1.237e-07 L_in=2.290e-04 L_out=4.126e-08 L_per=5.733e-01
+[step 016000] L_total=2.864e+01 L_pde=8.036e-03 L_wall=9.617e-08 L_in=1.693e-04 L_out=1.367e-08 L_per=5.711e-01
+[step 016500] L_total=2.959e+01 L_pde=7.884e-03 L_wall=1.112e-07 L_in=1.388e-04 L_out=7.290e-07 L_per=5.901e-01
+[step 017000] L_total=3.139e+01 L_pde=8.225e-03 L_wall=1.389e-07 L_in=9.932e-05 L_out=2.673e-08 L_per=6.262e-01
+[step 017500] L_total=3.159e+01 L_pde=7.753e-03 L_wall=1.366e-07 L_in=8.409e-05 L_out=6.013e-09 L_per=6.303e-01
+[step 018000] L_total=3.243e+01 L_pde=7.802e-03 L_wall=1.416e-07 L_in=7.871e-05 L_out=5.788e-09 L_per=6.471e-01
+[step 018500] L_total=3.354e+01 L_pde=7.754e-03 L_wall=1.542e-07 L_in=6.937e-05 L_out=8.150e-07 L_per=6.694e-01
+[step 019000] L_total=3.413e+01 L_pde=7.555e-03 L_wall=1.476e-07 L_in=6.350e-05 L_out=7.231e-09 L_per=6.811e-01
+[step 019500] L_total=3.463e+01 L_pde=7.485e-03 L_wall=1.456e-07 L_in=6.133e-05 L_out=7.255e-09 L_per=6.912e-01
+[step 020000] L_total=3.491e+01 L_pde=7.412e-03 L_wall=1.426e-07 L_in=6.223e-05 L_out=7.198e-09 L_per=6.968e-01
+Starting L-BFGS refinement...
+L-BFGS done.
+Saved diagnostics to diagnostics_after_quick.png
+Quick-run Cl=3.8212e-05, Cd=-1.3682e-03
 
 Process finished with exit code 0
