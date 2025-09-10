@@ -11,28 +11,28 @@ Solidity: σ = 1.0
 Angle of attack: α = 0°
 ============================================================
 Starting training...
-Epoch 50/200, Time: 3.9s, LR: 5.00e-04
-  Total: 0.083596 | Phys: 0.000029 | Inlet: 0.059092 | Outlet: 0.000892 | Foil: 0.002412 | Periodic: 0.000673
-    mean |p_top-p_bot| = 2.448e-03
-    [dbg] near-wall residuals (N=512): mean=5.351e-05, max=2.027e-04
-Epoch 100/200, Time: 7.2s, LR: 5.00e-04
-  Total: 0.077189 | Phys: 0.000760 | Inlet: 0.042982 | Outlet: 0.000563 | Foil: 0.001973 | Periodic: 0.002070
-    mean |p_top-p_bot| = 6.869e-02
-    [dbg] near-wall residuals (N=512): mean=5.186e-03, max=9.880e-03
+Epoch 50/200, Time: 4.8s, LR: 5.00e-04
+  Total: 1.999335 | Phys: 0.000113 | Inlet: 0.004594 | Outlet: 0.000022 | Foil: 0.606852 | Periodic: 0.000589
+    mean |p_top-p_bot| = 2.061e-03
+    [dbg] near-wall residuals (N=512): mean=6.353e-04, max=7.165e-03
+Epoch 100/200, Time: 7.7s, LR: 5.00e-04
+  Total: 1.245935 | Phys: 0.004467 | Inlet: 0.009121 | Outlet: 0.009401 | Foil: 0.221745 | Periodic: 0.031611
+    mean |p_top-p_bot| = 6.896e-03
+    [dbg] near-wall residuals (N=512): mean=1.802e-03, max=1.844e-02
   [resample] epoch 100: evaluating up to 4000 candidate points in batches of 256
     candidates after filtering: 4000
     residuals computed: 4000 (expected 4000)
     selected top 2000 residual points (pre-thinning)
     after thinning, top-residual points: 1000
     [resample done] top-residual pts: 1000, uniform pts: 3000
-Epoch 150/200, Time: 24.3s, LR: 5.00e-04
-  Total: 0.085495 | Phys: 0.004117 | Inlet: 0.032898 | Outlet: 0.000564 | Foil: 0.003224 | Periodic: 0.002803
-    mean |p_top-p_bot| = 3.410e-03
-    [dbg] near-wall residuals (N=512): mean=1.424e-04, max=8.302e-04
-Epoch 200/200, Time: 27.6s, LR: 5.00e-04
-  Total: 0.093456 | Phys: 0.004381 | Inlet: 0.014448 | Outlet: 0.000396 | Foil: 0.007984 | Periodic: 0.004297
-    mean |p_top-p_bot| = 5.221e-03
-    [dbg] near-wall residuals (N=512): mean=1.354e-04, max=3.153e-03
+Epoch 150/200, Time: 22.7s, LR: 5.00e-04
+  Total: 0.162127 | Phys: 0.018012 | Inlet: 0.005364 | Outlet: 0.000880 | Foil: 0.022181 | Periodic: 0.000204
+    mean |p_top-p_bot| = 1.432e-02
+    [dbg] near-wall residuals (N=512): mean=2.281e-03, max=1.085e-02
+Epoch 200/200, Time: 25.7s, LR: 5.00e-04
+  Total: 0.131129 | Phys: 0.020305 | Inlet: 0.005955 | Outlet: 0.000827 | Foil: 0.008467 | Periodic: 0.000072
+    mean |p_top-p_bot| = 2.878e-03
+    [dbg] near-wall residuals (N=512): mean=5.005e-04, max=2.714e-03
   [resample] epoch 200: evaluating up to 4000 candidate points in batches of 256
     candidates after filtering: 4000
     residuals computed: 3998 (expected 4000)
@@ -40,25 +40,25 @@ Epoch 200/200, Time: 27.6s, LR: 5.00e-04
     after thinning, top-residual points: 1000
     [resample done] top-residual pts: 1000, uniform pts: 3000
 
-Training completed in 43.0 seconds
+Training completed in 37.8 seconds
 
 Generating visualizations...
 Results saved to 'cascade_flow_results.png'
 
 Force Coefficients:...
-  Lift coefficient (Cl): 0.000049
-  Drag coefficient (Cd): 0.020603
-  L/D ratio: 0.00
+  Lift coefficient (Cl): 0.004213
+  Drag coefficient (Cd): 0.056546
+  L/D ratio: 0.07
 
 ============================================================
 Analysis Complete!
 ============================================================
 Saved diagnostics to diagnostics.png
 Traceback (most recent call last):
-  File "/mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/edit by gpt/eight/eightSecond/second.py", line 1324, in <module>
+  File "/mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/edit by gpt/eight/eightSecond/second.py", line 1356, in <module>
     solver, fig = main()
                   ^^^^^^
-  File "/mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/edit by gpt/eight/eightSecond/second.py", line 1320, in main
+  File "/mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/edit by gpt/eight/eightSecond/second.py", line 1352, in main
     return solver, fig
                    ^^^
 NameError: name 'fig' is not defined
