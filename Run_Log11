@@ -1,0 +1,31 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/Pinn2.py 
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Initial loss dict (smoke): {'L_total': 0.4021648168563843, 'L_pde': 0.008066108450293541, 'L_wall': 0.009656406939029694, 'L_inlet': 0.12840993702411652, 'L_out': 0.0011919091921299696, 'L_periodic': 0.008397161960601807, 'L_psi_periodic': 0.006284247152507305, 'L_u_periodic': 0.0002542213478591293, 'L_v_periodic': 1.0410918548586778e-05, 'L_p_anchor': 0.0008795229950919747}
+Loaded checkpoint 'checkpoints/best_model.pt' (step=4100)
+Resumed from checkpoint. LR after load: 0.0004500448483512163
+Starting training for 5000 steps; batch_domain=5000, batch_boundary=1000
+[step 004200] L_total=2.059e+00 L_pde=1.676e-01 L_wall=2.249e-04 L_in=1.140e-02 L_out=3.255e-05 L_per=1.275e-03 L_u_per=4.277e-03 L_v_per=3.355e-03 LR=4.477e-04
+Saved best model (L_total=2.059e+00): checkpoints/best_model.pt
+Warning: compute_residual_grid failed: name 'compute_residual_grid' is not defined
+[step 004300] L_total=2.272e+00 L_pde=1.835e-01 L_wall=5.076e-05 L_in=1.577e-02 L_out=1.510e-05 L_per=1.146e-03 L_u_per=2.598e-03 L_v_per=2.816e-03 LR=4.452e-04
+[step 004400] L_total=1.930e+00 L_pde=1.687e-01 L_wall=7.454e-04 L_in=9.284e-03 L_out=3.735e-04 L_per=9.754e-04 L_u_per=2.201e-03 L_v_per=2.805e-03 LR=4.428e-04
+Saved best model (L_total=1.930e+00): checkpoints/best_model.pt
+Warning: compute_residual_grid failed: name 'compute_residual_grid' is not defined
+[step 004500] L_total=1.967e+00 L_pde=1.644e-01 L_wall=3.688e-04 L_in=8.487e-03 L_out=1.134e-04 L_per=1.281e-03 L_u_per=1.777e-04 L_v_per=4.159e-03 LR=4.402e-04
+[step 004600] L_total=2.000e+00 L_pde=1.621e-01 L_wall=2.191e-04 L_in=9.967e-03 L_out=2.282e-06 L_per=1.373e-03 L_u_per=1.401e-03 L_v_per=4.326e-03 LR=4.377e-04
+[step 004700] L_total=2.278e+00 L_pde=1.757e-01 L_wall=2.197e-04 L_in=1.578e-02 L_out=1.736e-04 L_per=9.961e-04 L_u_per=7.001e-04 L_v_per=2.740e-03 LR=4.351e-04
+Warning: compute_residual_grid failed: name 'compute_residual_grid' is not defined
+[step 004800] L_total=1.838e+00 L_pde=1.786e-01 L_wall=3.374e-04 L_in=9.157e-03 L_out=4.710e-05 L_per=1.478e-03 L_u_per=2.478e-03 L_v_per=3.402e-03 LR=4.324e-04
+Saved best model (L_total=1.838e+00): checkpoints/best_model.pt
+[step 004900] L_total=1.703e+00 L_pde=1.567e-01 L_wall=2.369e-04 L_in=6.537e-03 L_out=7.355e-05 L_per=1.267e-03 L_u_per=1.087e-03 L_v_per=4.016e-03 LR=4.297e-04
+Saved best model (L_total=1.703e+00): checkpoints/best_model.pt
+Warning: compute_residual_grid failed: name 'compute_residual_grid' is not defined
+[step 005000] L_total=1.865e+00 L_pde=1.799e-01 L_wall=4.532e-04 L_in=1.035e-02 L_out=4.393e-04 L_per=9.315e-04 L_u_per=1.026e-03 L_v_per=2.917e-03 LR=4.270e-04
+Saved checkpoint: checkpoints/ckpt_step_005000.pt
+Saved diagnostics to diagnostics_step_005000.png
+Saved diagnostics to diagnostics_after_quick.png
+Quick-run Cl=9.5177e-03, Cd=-2.9318e-03
+
+Process finished with exit code 0
