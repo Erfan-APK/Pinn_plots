@@ -1293,26 +1293,24 @@ def main():
     print("=" * 60)
 
     solver = CascadeFlowSolver(
-        Re=200,
-        chord=1.0,
-        solidity=1.0,
+        Re=200, chord=1.0, solidity=1.0,
         use_residual_adaptive=True,
         resample_every=100,
-        pool_domain_size=8000,  # much smaller for fast dev runs
-        pool_boundary_size=2000,
-        hybrid_fraction=0.5,
-        n_cand_max=8000,
-        cand_batch_size=512
+        pool_domain_size=4000,  # even smaller for a super-quick test
+        pool_boundary_size=1000,
+        hybrid_fraction=0.5,  # will be overridden by solver.hybrid_fraction line above if kept
+        n_cand_max=4000,
+        cand_batch_size=256
     )
+
+    solver.hybrid_fraction = 0.5
 
     # keep psi/p scales explicit
     solver.model.psi_scale = torch.tensor(1.0, device=device)
     solver.model.p_scale = torch.tensor(1.0, device=device)
-
     # short dev run
-    solver.train(epochs=800, print_every=100, batch_dom=2048, batch_bnd=512)
-
-    fig = solver.visualize_results(save_figs=True)
+    solver.train(epochs=200, print_every=50, batch_dom=1024, batch_bnd=256)
+    solver.visualize_results(save_figs=True)
 
     print("\n" + "=" * 60)
     print("Analysis Complete!")
