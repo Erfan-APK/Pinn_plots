@@ -498,8 +498,9 @@ class CascadeFlowSolver:
         # enable small velocity-matching weights to enforce derivative continuity across seam
         # (raise gradually if needed; avoid too-large values that destabilize L_pde)
         # increase v-derivative enforcement (v = -dpsi/dx) — target derivative mismatch at seam
-        w_u_per = 0.05  # keep small — u was already small
-        w_v_per = 0.30  # raise v weight to 0.3 (try 0.2–0.5 range)
+        # use the warmed-up derivative-periodic weights (set during training loop)
+        w_u_per = float(getattr(self, 'w_u_per_current', getattr(self, 'w_u_per_base', 0.05)))
+        w_v_per = float(getattr(self, 'w_v_per_current', getattr(self, 'w_v_per_base', 0.30)))
 
         u_top, v_top = _uv_from_psi_local(psi_top, x_pairs, y_top, create_graph=True)
         u_bot, v_bot = _uv_from_psi_local(psi_bot, x_pairs, y_bot, create_graph=True)
@@ -787,13 +788,28 @@ class CascadeFlowSolver:
                 pass
 
             # warm-up weights (linear ramp to base)
+            # warm-up weights (linear ramp to base) — now includes derivative-periodic warmup
             if step <= warmup_steps:
-                alpha = step / warmup_steps
+                alpha = float(step) / float(max(1, warmup_steps))
+                start_fraction = 0.05  # start at 5% of the base weight, ramp to 100%
+                # existing global weights
                 self.w_phys = alpha * self.w_phys_base
                 self.w_in = alpha * self.w_in_base
                 self.w_out = alpha * self.w_out_base
                 self.w_foil = alpha * self.w_foil_base
                 self.w_per = alpha * self.w_per_base
+                # derivative-periodic weights (warmed up smoothly from a small fraction)
+                self.w_v_per_current = (start_fraction * (1.0 - alpha) + alpha) * float(self.w_v_per_base)
+                self.w_u_per_current = (start_fraction * (1.0 - alpha) + alpha) * float(self.w_u_per_base)
+            else:
+                # after warmup, lock to base values (keeps behaviour explicit & stable)
+                self.w_phys = float(self.w_phys_base)
+                self.w_in = float(self.w_in_base)
+                self.w_out = float(self.w_out_base)
+                self.w_foil = float(self.w_foil_base)
+                self.w_per = float(self.w_per_base)
+                self.w_v_per_current = float(self.w_v_per_base)
+                self.w_u_per_current = float(self.w_u_per_base)
 
             # logging
             if step % log_every == 0 or step == 1:
