@@ -1,1 +1,34 @@
-a
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/quick_tweak_u_focus.py 
+Loading module Pinn2
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Solver created
+Set w_psi_periodic = 300.0
+Set w_p_anchor = 500.0
+Set w_per_base = 500.0
+Set w_u_per_base = 0.3
+Set w_v_per_base = 0.1
+Set hybrid_fraction = 0.45
+Set resample_every = 250
+Resuming from 9400 -> target total epochs 11400
+Loaded checkpoint 'checkpoints/best_model.pt' (step=9400)
+Resumed from checkpoint. LR after load: 0.00027401903963468715
+Starting training for 11400 steps; batch_domain=8000, batch_boundary=2000
+[step 009500] L_total=2.726e+00 L_pde=2.913e-01 L_wall=2.552e-05 L_in=1.577e-02 L_out=3.332e-06 L_per=1.345e-03 L_u_per=3.192e-03 L_v_per=3.761e-03 LR=2.701e-04
+Saved best model (L_total=2.726e+00): checkpoints/best_model.pt
+[step 009600] L_total=2.372e+00 L_pde=2.164e-01 L_wall=2.303e-05 L_in=1.553e-02 L_out=2.039e-06 L_per=7.959e-04 L_u_per=1.436e-03 L_v_per=3.578e-03 LR=2.662e-04
+Saved best model (L_total=2.372e+00): checkpoints/best_model.pt
+[step 009700] L_total=2.409e+00 L_pde=2.097e-01 L_wall=2.442e-05 L_in=1.677e-02 L_out=1.787e-06 L_per=6.289e-04 L_u_per=8.639e-04 L_v_per=3.636e-03 LR=2.623e-04
+[step 009800] L_total=2.567e+00 L_pde=2.206e-01 L_wall=2.704e-05 L_in=1.809e-02 L_out=2.192e-06 L_per=6.037e-04 L_u_per=7.502e-04 L_v_per=3.727e-03 LR=2.584e-04
+[step 009900] L_total=2.424e+00 L_pde=2.242e-01 L_wall=2.901e-05 L_in=1.698e-02 L_out=1.828e-06 L_per=5.423e-04 L_u_per=5.766e-04 L_v_per=3.628e-03 LR=2.545e-04
+[step 010000] L_total=2.206e+00 L_pde=2.543e-01 L_wall=2.696e-05 L_in=1.496e-02 L_out=1.453e-06 L_per=4.943e-04 L_u_per=3.870e-04 L_v_per=3.714e-03 LR=2.505e-04
+Saved best model (L_total=2.206e+00): checkpoints/best_model.pt
+Saved checkpoint: checkpoints/ckpt_step_010000.pt
+Saved diagnostics to diagnostics_step_010000.png
+[step 010100] L_total=2.516e+00 L_pde=2.272e-01 L_wall=2.619e-05 L_in=1.750e-02 L_out=2.360e-06 L_per=6.439e-04 L_u_per=9.203e-04 L_v_per=3.569e-03 LR=2.466e-04
+[step 010200] L_total=2.495e+00 L_pde=2.307e-01 L_wall=2.868e-05 L_in=1.760e-02 L_out=2.211e-06 L_per=5.371e-04 L_u_per=5.681e-04 L_v_per=3.605e-03 LR=2.427e-04
+[step 010300] L_total=2.095e+00 L_pde=2.356e-01 L_wall=3.227e-05 L_in=1.425e-02 L_out=1.802e-06 L_per=4.970e-04 L_u_per=5.021e-04 L_v_per=3.407e-03 LR=2.388e-04
+Saved best model (L_total=2.095e+00): checkpoints/best_model.pt
+[step 010400] L_total=2.323e+00 L_pde=2.423e-01 L_wall=2.885e-05 L_in=1.557e-02 L_out=1.495e-06 L_per=5.640e-04 L_u_per=6.231e-04 L_v_per=3.704e-03 LR=2.349e-04
+[step 010500] L_total=2.575e+00 L_pde=2.922e-01 L_wall=3.462e-05 L_in=1.756e-02 L_out=1.587e-06 L_per=5.972e-04 L_u_per=7.972e-04 L_v_per=3.510e-03 LR=2.310e-04
