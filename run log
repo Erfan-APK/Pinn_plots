@@ -1,0 +1,99 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/edit by gpt/eight/eight_first/eightFirst_first.py 
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+============================================================
+PINN Simulation: NACA 0012 Cascade Flow
+============================================================
+Reynolds number: Re = 200
+Chord length: c = 1.0
+Solidity: σ = 1.0
+Angle of attack: α = 0°
+============================================================
+Starting training...
+Epoch 100/800, Time: 6.4s, LR: 5.00e-04
+  Total: 0.114656 | Phys: 0.000936 | Inlet: 0.038135 | Outlet: 0.000253 | Foil: 0.013073 | Periodic: 0.002327
+    [dbg] near-wall residuals (N=512): mean=4.551e-04, max=8.440e-04
+  [resample] epoch 100: evaluating up to 4800 candidate points in batches of 512
+    candidates after filtering: 4800
+    residuals computed: 4795 (expected 4800)
+    selected top 2400 residual points (pre-thinning)
+    after thinning, top-residual points: 1200
+    [resample done] top-residual pts: 1200, uniform pts: 6800
+Epoch 200/800, Time: 29.7s, LR: 5.00e-04
+  Total: 0.112622 | Phys: 0.008796 | Inlet: 0.020716 | Outlet: 0.000537 | Foil: 0.005259 | Periodic: 0.004568
+    [dbg] near-wall residuals (N=512): mean=5.464e-03, max=8.558e-03
+  [resample] epoch 200: evaluating up to 4800 candidate points in batches of 512
+    candidates after filtering: 4800
+    residuals computed: 4797 (expected 4800)
+    selected top 2400 residual points (pre-thinning)
+    after thinning, top-residual points: 1200
+    [resample done] top-residual pts: 1200, uniform pts: 6800
+Epoch 300/800, Time: 49.2s, LR: 5.00e-04
+  Total: 0.119077 | Phys: 0.003972 | Inlet: 0.018498 | Outlet: 0.000413 | Foil: 0.005211 | Periodic: 0.004139
+    [dbg] near-wall residuals (N=512): mean=2.231e-04, max=1.964e-03
+  [resample] epoch 300: evaluating up to 4800 candidate points in batches of 512
+    candidates after filtering: 4800
+    residuals computed: 4800 (expected 4800)
+    selected top 2400 residual points (pre-thinning)
+    after thinning, top-residual points: 1200
+    [resample done] top-residual pts: 1200, uniform pts: 6800
+Epoch 400/800, Time: 70.7s, LR: 5.00e-04
+  Total: 0.105377 | Phys: 0.004061 | Inlet: 0.016666 | Outlet: 0.000454 | Foil: 0.002114 | Periodic: 0.004448
+    [dbg] near-wall residuals (N=512): mean=3.220e-04, max=1.625e-03
+  [resample] epoch 400: evaluating up to 4800 candidate points in batches of 512
+    candidates after filtering: 4800
+    residuals computed: 4798 (expected 4800)
+    selected top 2400 residual points (pre-thinning)
+    after thinning, top-residual points: 1200
+    [resample done] top-residual pts: 1200, uniform pts: 6800
+Epoch 500/800, Time: 91.9s, LR: 4.99e-04
+  Total: 0.133376 | Phys: 0.005937 | Inlet: 0.017959 | Outlet: 0.000523 | Foil: 0.001448 | Periodic: 0.006784
+    [dbg] near-wall residuals (N=512): mean=1.247e-03, max=4.416e-03
+  [resample] epoch 500: evaluating up to 4800 candidate points in batches of 512
+    candidates after filtering: 4800
+    residuals computed: 4800 (expected 4800)
+    selected top 2400 residual points (pre-thinning)
+    after thinning, top-residual points: 1200
+    [resample done] top-residual pts: 1200, uniform pts: 6800
+Epoch 600/800, Time: 112.4s, LR: 4.99e-04
+  Total: 0.164706 | Phys: 0.002802 | Inlet: 0.009713 | Outlet: 0.000706 | Foil: 0.004942 | Periodic: 0.007458
+    [dbg] near-wall residuals (N=512): mean=3.964e-04, max=2.892e-03
+  [resample] epoch 600: evaluating up to 4800 candidate points in batches of 512
+    candidates after filtering: 4800
+    residuals computed: 4799 (expected 4800)
+    selected top 2400 residual points (pre-thinning)
+    after thinning, top-residual points: 1200
+    [resample done] top-residual pts: 1200, uniform pts: 6800
+Epoch 700/800, Time: 132.2s, LR: 4.98e-04
+  Total: 0.168718 | Phys: 0.002974 | Inlet: 0.013621 | Outlet: 0.000749 | Foil: 0.003027 | Periodic: 0.008233
+    [dbg] near-wall residuals (N=512): mean=6.074e-04, max=2.848e-03
+  [resample] epoch 700: evaluating up to 4800 candidate points in batches of 512
+    candidates after filtering: 4800
+    residuals computed: 4795 (expected 4800)
+    selected top 2400 residual points (pre-thinning)
+    after thinning, top-residual points: 1200
+    [resample done] top-residual pts: 1200, uniform pts: 6800
+Epoch 800/800, Time: 153.3s, LR: 4.98e-04
+  Total: 0.140195 | Phys: 0.002982 | Inlet: 0.006601 | Outlet: 0.000653 | Foil: 0.001825 | Periodic: 0.011049
+    [dbg] near-wall residuals (N=512): mean=7.235e-04, max=4.097e-03
+  [resample] epoch 800: evaluating up to 4800 candidate points in batches of 512
+    candidates after filtering: 4800
+    residuals computed: 4796 (expected 4800)
+    selected top 2400 residual points (pre-thinning)
+    after thinning, top-residual points: 1200
+    [resample done] top-residual pts: 1200, uniform pts: 6800
+
+Training completed in 167.5 seconds
+
+Generating visualizations...
+Results saved to 'cascade_flow_results.png'
+
+Force Coefficients:...
+  Lift coefficient (Cl): 0.003686
+  Drag coefficient (Cd): 0.016327
+  L/D ratio: 0.23
+
+============================================================
+Analysis Complete!
+============================================================
