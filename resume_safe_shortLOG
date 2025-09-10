@@ -1,0 +1,25 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/resume_safe_short.py 
+Loading module Pinn2
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Solver created
+Loaded polished model weights
+Set w_p_anchor = 500.0
+Set w_psi_periodic = 300.0
+Set w_per_base = 500.0
+Set w_u_per_base = 1.5
+Set w_v_per_base = 0.12
+Set hybrid_fraction = 0.45
+Set resample_every = 250
+Resuming from step 11500 -> target total steps 14500
+Calling solver.train with kwargs: {'epochs': 14500, 'print_every': 100, 'batch_dom': 8000, 'batch_bnd': 2000, 'resume_path': None, 'lbfgs_after': False}
+Starting training for 14500 steps; batch_domain=8000, batch_boundary=2000
+[step 000001] L_total=2.227e-01 L_pde=1.230e-01 L_wall=2.934e-05 L_in=1.876e-02 L_out=1.343e-06 L_per=2.413e-05 L_u_per=3.759e-04 L_v_per=6.470e-03 LR=5.000e-04
+Saved best model (L_total=2.227e-01): checkpoints/best_model.pt
+[step 000100] L_total=4.799e-01 L_pde=1.357e-01 L_wall=2.334e-04 L_in=2.572e-02 L_out=2.051e-06 L_per=7.258e-04 L_u_per=1.133e-03 L_v_per=1.490e-03 LR=5.000e-04
+[step 000200] L_total=7.290e-01 L_pde=1.172e-01 L_wall=4.543e-05 L_in=1.972e-02 L_out=1.308e-04 L_per=2.128e-04 L_u_per=1.847e-05 L_v_per=4.950e-03 LR=4.999e-04
+[step 000300] L_total=1.367e+00 L_pde=1.625e-01 L_wall=4.055e-05 L_in=2.022e-02 L_out=2.041e-05 L_per=1.734e-03 L_u_per=1.911e-03 L_v_per=5.457e-03 LR=4.997e-04
+[step 000400] L_total=1.559e+00 L_pde=1.792e-01 L_wall=1.399e-05 L_in=2.123e-02 L_out=1.093e-04 L_per=3.954e-04 L_u_per=1.174e-05 L_v_per=5.568e-03 LR=4.995e-04
+[step 000500] L_total=2.245e+00 L_pde=2.123e-01 L_wall=2.098e-05 L_in=1.941e-02 L_out=6.229e-07 L_per=1.663e-03 L_u_per=1.110e-03 L_v_per=4.947e-03 LR=4.992e-04
+[step 000600] L_total=2.355e+00 L_pde=1.695e-01 L_wall=2.371e-05 L_in=1.758e-02 L_out=2.880e-06 L_per=1.419e-03 L_u_per=7.057e-04 L_v_per=4.847e-03 LR=4.989e-04
