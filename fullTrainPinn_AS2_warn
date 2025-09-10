@@ -478,6 +478,41 @@ class CascadeFlowSolver:
             'airfoil': (x_airfoil_full, y_airfoil_full),
         }
 
+    # -------------------------
+    # Adaptive helper wrappers (use module-level helpers if available,
+    # otherwise fallback to PINN FD scorer via self.model)
+    # -------------------------
+    def compute_residual_grid(self, nx=200, ny=100):
+        """Return X,Y,R (numpy arrays) for a coarse residual map."""
+        try:
+            # if module-level implementation exists, use it
+            return compute_residual_grid(self, nx=nx, ny=ny)
+        except Exception:
+            # fallback: use a safe FD scorer from the model (PINN.residuals_fd_9pt)
+            xs = np.linspace(float(self.x_min), float(self.x_max), nx, dtype=np.float32)
+            ys = np.linspace(float(self.y_min), float(self.y_max), ny, dtype=np.float32)
+            X, Y = np.meshgrid(xs, ys, indexing='xy')
+            xt = torch.tensor(X.ravel()[:, None], dtype=torch.float32, device=device)
+            yt = torch.tensor(Y.ravel()[:, None], dtype=torch.float32, device=device)
+            # call model's FD scorer (always exists)
+            R = self.model.residuals_fd_9pt(xt, yt).cpu().numpy().ravel()
+            return X, Y, R
+
+    def sample_from_residual_grid(self, X, Y, R, n_samples, exponent=1.5):
+        """Importance-sample n_samples points from residual grid arrays."""
+        try:
+            return sample_from_residual_grid(X, Y, R, n_samples, exponent=exponent)
+        except Exception:
+            probs = (R + 1e-12) ** float(exponent)
+            probs = probs / probs.sum()
+            idx = np.random.choice(len(probs), size=n_samples, p=probs)
+            x_samples = X.ravel()[idx][:, None].astype(np.float32)
+            y_samples = Y.ravel()[idx][:, None].astype(np.float32)
+            return (
+                torch.tensor(x_samples, dtype=torch.float32, device=device),
+                torch.tensor(y_samples, dtype=torch.float32, device=device)
+            )
+
     # ----------------------
     # Loss assembly
     # ----------------------
@@ -890,9 +925,8 @@ class CascadeFlowSolver:
             # update coarse residual grid every adaptive_T steps
             if step % adaptive_T == 0:
                 try:
-                    self._adaptive_res_X, self._adaptive_res_Y, self._adaptive_res_R = compute_residual_grid(self,
-                                                                                                             nx=residual_nx,
-                                                                                                             ny=residual_ny)
+                    self._adaptive_res_X, self._adaptive_res_Y, self._adaptive_res_R = self.compute_residual_grid(nx=residual_nx, ny=residual_ny)
+
                 except Exception as e:
                     # if residual grid computation fails, keep previous grid (or None)
                     print("Warning: compute_residual_grid failed:", e)
@@ -907,8 +941,8 @@ class CascadeFlowSolver:
                     n_res = int(round(residual_fraction * n_dom))
                     n_uniform = max(0, n_dom - n_res)
                     # sample residual points
-                    x_res, y_res = sample_from_residual_grid(self._adaptive_res_X, self._adaptive_res_Y,
-                                                             self._adaptive_res_R, n_res, exponent=residual_exponent)
+                    x_res, y_res = self.sample_from_residual_grid(self._adaptive_res_X, self._adaptive_res_Y, self._adaptive_res_R, n_res, exponent=residual_exponent)
+
                     # keep the first n_uniform points from current domain as uniform complement (or resample)
                     x_uniform = x_dom[:n_uniform]
                     y_uniform = y_dom[:n_uniform]
