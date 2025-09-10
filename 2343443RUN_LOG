@@ -1,0 +1,19 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/quick_adaptive_try_psi_fix.py 
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Solver created.
+Loaded checkpoint weights into solver.model
+Set solver.w_psi_periodic = 200.0
+Set solver.w_p_anchor = 10.0
+Set solver.w_per_base = 300.0
+Set solver.w_u_per_base = 0.3
+Set solver.w_v_per_base = 0.25
+Set solver.hybrid_fraction = 0.5
+Set solver.resample_every = 250
+Calling solver.train(...) with kwargs: {'epochs': 5000, 'print_every': 100, 'batch_dom': 8000, 'batch_bnd': 2000, 'resume_path': 'checkpoints/best_model.pt', 'lbfgs_after': False}
+Loaded checkpoint 'checkpoints/best_model.pt' (step=5000)
+Resumed from checkpoint. LR after load: 0.0004269508495842399
+Starting training for 5000 steps; batch_domain=8000, batch_boundary=2000
+
+Process finished with exit code 0
