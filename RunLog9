@@ -1,0 +1,94 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/Pinn2.py 
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Initial loss dict (smoke): {'L_total': 0.4021648168563843, 'L_pde': 0.008066108450293541, 'L_wall': 0.009656406939029694, 'L_inlet': 0.12840993702411652, 'L_out': 0.0011919091921299696, 'L_periodic': 0.008397161960601807, 'L_psi_periodic': 0.006284247152507305, 'L_u_periodic': 0.0002542213478591293, 'L_v_periodic': 1.0410918548586778e-05, 'L_p_anchor': 0.0008795229950919747}
+Starting training for 20000 steps; batch_domain=20000, batch_boundary=4000
+[step 000001] L_total=4.022e-01 L_pde=8.030e-03 L_wall=9.656e-03 L_in=1.235e-01 L_out=1.264e-03 L_per=8.397e-03 L_u_per=2.542e-04 L_v_per=1.041e-05
+Saved best model (L_total=4.022e-01): checkpoints/best_model.pt
+[step 000500] L_total=3.481e+00 L_pde=5.792e-04 L_wall=7.211e-03 L_in=3.717e-02 L_out=9.845e-09 L_per=8.581e-04 L_u_per=1.348e-03 L_v_per=5.233e-03
+[step 001000] L_total=5.677e+00 L_pde=6.077e-04 L_wall=1.171e-03 L_in=4.271e-02 L_out=1.298e-08 L_per=2.219e-03 L_u_per=9.694e-05 L_v_per=7.388e-03
+Saved checkpoint: checkpoints/ckpt_step_001000.pt
+Saved diagnostics to diagnostics_step_001000.png
+[step 001500] L_total=5.406e+00 L_pde=1.189e-03 L_wall=3.026e-03 L_in=3.202e-02 L_out=2.733e-06 L_per=2.705e-03 L_u_per=5.415e-06 L_v_per=9.007e-03
+[step 002000] L_total=5.321e+00 L_pde=8.016e-04 L_wall=1.309e-03 L_in=3.762e-02 L_out=1.276e-07 L_per=2.419e-03 L_u_per=7.619e-06 L_v_per=8.058e-03
+Saved checkpoint: checkpoints/ckpt_step_002000.pt
+Saved diagnostics to diagnostics_step_002000.png
+[step 002500] L_total=3.768e+00 L_pde=1.855e-02 L_wall=2.171e-04 L_in=2.026e-02 L_out=6.047e-07 L_per=4.065e-03 L_u_per=6.207e-03 L_v_per=1.246e-02
+[step 003000] L_total=3.444e+00 L_pde=1.177e-01 L_wall=6.440e-04 L_in=1.186e-02 L_out=4.680e-05 L_per=4.089e-03 L_u_per=4.506e-03 L_v_per=1.281e-02
+Saved checkpoint: checkpoints/ckpt_step_003000.pt
+Saved diagnostics to diagnostics_step_003000.png
+[step 003500] L_total=2.892e+00 L_pde=6.821e-02 L_wall=1.537e-04 L_in=1.489e-02 L_out=1.940e-04 L_per=3.123e-03 L_u_per=2.027e-03 L_v_per=9.964e-03
+[step 004000] L_total=2.662e+00 L_pde=1.323e-01 L_wall=6.702e-05 L_in=9.560e-03 L_out=1.887e-05 L_per=3.291e-03 L_u_per=6.359e-03 L_v_per=9.868e-03
+Saved checkpoint: checkpoints/ckpt_step_004000.pt
+Saved diagnostics to diagnostics_step_004000.png
+[step 004500] L_total=2.437e+00 L_pde=1.847e-01 L_wall=1.234e-04 L_in=1.514e-02 L_out=1.537e-05 L_per=1.815e-03 L_u_per=2.176e-03 L_v_per=5.593e-03
+[step 005000] L_total=2.380e+00 L_pde=1.421e-01 L_wall=1.066e-04 L_in=9.215e-03 L_out=2.808e-06 L_per=2.615e-03 L_u_per=4.638e-03 L_v_per=7.734e-03
+Saved checkpoint: checkpoints/ckpt_step_005000.pt
+Saved diagnostics to diagnostics_step_005000.png
+[step 005500] L_total=2.348e+00 L_pde=2.147e-01 L_wall=1.241e-04 L_in=1.509e-02 L_out=3.548e-05 L_per=1.143e-03 L_u_per=5.063e-03 L_v_per=2.838e-03
+[step 006000] L_total=2.058e+00 L_pde=1.730e-01 L_wall=1.910e-04 L_in=1.178e-02 L_out=3.528e-07 L_per=1.348e-03 L_u_per=3.143e-03 L_v_per=3.890e-03
+Saved checkpoint: checkpoints/ckpt_step_006000.pt
+Saved diagnostics to diagnostics_step_006000.png
+[step 006500] L_total=2.236e+00 L_pde=1.674e-01 L_wall=4.181e-05 L_in=1.166e-02 L_out=5.088e-05 L_per=1.877e-03 L_u_per=5.793e-03 L_v_per=5.106e-03
+[step 007000] L_total=2.198e+00 L_pde=1.740e-01 L_wall=2.819e-05 L_in=1.062e-02 L_out=9.496e-05 L_per=1.791e-03 L_u_per=3.970e-03 L_v_per=5.231e-03
+Saved checkpoint: checkpoints/ckpt_step_007000.pt
+Saved diagnostics to diagnostics_step_007000.png
+[step 007500] L_total=2.261e+00 L_pde=1.924e-01 L_wall=3.430e-05 L_in=1.283e-02 L_out=3.767e-05 L_per=1.389e-03 L_u_per=2.137e-03 L_v_per=4.093e-03
+[step 008000] L_total=2.163e+00 L_pde=1.754e-01 L_wall=2.590e-05 L_in=1.001e-02 L_out=8.624e-06 L_per=1.899e-03 L_u_per=3.703e-04 L_v_per=6.106e-03
+Saved checkpoint: checkpoints/ckpt_step_008000.pt
+Saved diagnostics to diagnostics_step_008000.png
+[step 008500] L_total=2.107e+00 L_pde=1.806e-01 L_wall=2.428e-05 L_in=1.099e-02 L_out=1.119e-05 L_per=1.601e-03 L_u_per=2.302e-03 L_v_per=4.805e-03
+[step 009000] L_total=1.987e+00 L_pde=1.787e-01 L_wall=1.905e-05 L_in=1.123e-02 L_out=3.971e-07 L_per=1.322e-03 L_u_per=3.126e-04 L_v_per=3.914e-03
+Saved checkpoint: checkpoints/ckpt_step_009000.pt
+Saved diagnostics to diagnostics_step_009000.png
+[step 009500] L_total=1.973e+00 L_pde=1.646e-01 L_wall=5.608e-05 L_in=1.059e-02 L_out=6.786e-05 L_per=1.514e-03 L_u_per=6.855e-03 L_v_per=3.736e-03
+[step 010000] L_total=1.888e+00 L_pde=1.678e-01 L_wall=4.917e-05 L_in=8.820e-03 L_out=5.382e-05 L_per=1.627e-03 L_u_per=1.614e-03 L_v_per=5.106e-03
+Saved checkpoint: checkpoints/ckpt_step_010000.pt
+Saved diagnostics to diagnostics_step_010000.png
+[step 010500] L_total=1.948e+00 L_pde=1.637e-01 L_wall=2.168e-05 L_in=9.749e-03 L_out=4.554e-05 L_per=1.619e-03 L_u_per=2.977e-03 L_v_per=4.239e-03
+[step 011000] L_total=1.897e+00 L_pde=1.831e-01 L_wall=2.434e-05 L_in=1.217e-02 L_out=1.276e-04 L_per=9.397e-04 L_u_per=1.654e-04 L_v_per=2.877e-03
+Saved checkpoint: checkpoints/ckpt_step_011000.pt
+Saved diagnostics to diagnostics_step_011000.png
+[step 011500] L_total=2.009e+00 L_pde=1.696e-01 L_wall=1.091e-05 L_in=1.241e-02 L_out=4.086e-07 L_per=1.198e-03 L_u_per=1.346e-03 L_v_per=3.319e-03
+[step 012000] L_total=1.923e+00 L_pde=1.754e-01 L_wall=1.159e-05 L_in=1.232e-02 L_out=1.486e-05 L_per=1.014e-03 L_u_per=5.407e-04 L_v_per=2.675e-03
+Saved checkpoint: checkpoints/ckpt_step_012000.pt
+Saved diagnostics to diagnostics_step_012000.png
+[step 012500] L_total=1.832e+00 L_pde=1.843e-01 L_wall=1.217e-05 L_in=1.122e-02 L_out=7.310e-07 L_per=1.132e-03 L_u_per=3.760e-03 L_v_per=2.868e-03
+[step 013000] L_total=1.932e+00 L_pde=1.763e-01 L_wall=1.469e-05 L_in=1.035e-02 L_out=1.334e-05 L_per=1.342e-03 L_u_per=8.987e-04 L_v_per=3.983e-03
+Saved checkpoint: checkpoints/ckpt_step_013000.pt
+Saved diagnostics to diagnostics_step_013000.png
+[step 013500] L_total=1.781e+00 L_pde=1.782e-01 L_wall=2.048e-05 L_in=1.029e-02 L_out=3.449e-05 L_per=1.153e-03 L_u_per=5.155e-03 L_v_per=2.950e-03
+[step 014000] L_total=1.733e+00 L_pde=1.823e-01 L_wall=1.172e-05 L_in=1.043e-02 L_out=1.775e-06 L_per=9.729e-04 L_u_per=4.903e-04 L_v_per=2.796e-03
+Saved checkpoint: checkpoints/ckpt_step_014000.pt
+Saved diagnostics to diagnostics_step_014000.png
+[step 014500] L_total=1.916e+00 L_pde=1.940e-01 L_wall=1.993e-05 L_in=1.313e-02 L_out=9.024e-06 L_per=8.083e-04 L_u_per=1.598e-03 L_v_per=2.328e-03
+[step 015000] L_total=1.760e+00 L_pde=1.814e-01 L_wall=1.244e-05 L_in=1.036e-02 L_out=1.121e-06 L_per=9.494e-04 L_u_per=6.869e-05 L_v_per=3.001e-03
+Saved checkpoint: checkpoints/ckpt_step_015000.pt
+Saved diagnostics to diagnostics_step_015000.png
+[step 015500] L_total=1.711e+00 L_pde=1.825e-01 L_wall=2.788e-05 L_in=1.051e-02 L_out=8.181e-08 L_per=7.623e-04 L_u_per=5.120e-04 L_v_per=2.414e-03
+[step 016000] L_total=1.740e+00 L_pde=1.901e-01 L_wall=1.495e-05 L_in=1.053e-02 L_out=2.293e-06 L_per=8.745e-04 L_u_per=6.669e-05 L_v_per=2.898e-03
+Saved checkpoint: checkpoints/ckpt_step_016000.pt
+Saved diagnostics to diagnostics_step_016000.png
+[step 016500] L_total=1.797e+00 L_pde=1.872e-01 L_wall=2.627e-05 L_in=1.164e-02 L_out=2.325e-06 L_per=7.649e-04 L_u_per=8.368e-04 L_v_per=2.402e-03
+[step 017000] L_total=1.727e+00 L_pde=1.988e-01 L_wall=2.308e-05 L_in=1.137e-02 L_out=2.913e-06 L_per=7.097e-04 L_u_per=1.925e-04 L_v_per=2.325e-03
+Saved checkpoint: checkpoints/ckpt_step_017000.pt
+Saved diagnostics to diagnostics_step_017000.png
+[step 017500] L_total=1.709e+00 L_pde=1.915e-01 L_wall=3.119e-05 L_in=9.972e-03 L_out=8.841e-08 L_per=8.960e-04 L_u_per=1.027e-04 L_v_per=2.957e-03
+[step 018000] L_total=1.698e+00 L_pde=1.949e-01 L_wall=1.473e-05 L_in=1.061e-02 L_out=3.092e-06 L_per=7.561e-04 L_u_per=5.790e-05 L_v_per=2.507e-03
+Saved checkpoint: checkpoints/ckpt_step_018000.pt
+Saved diagnostics to diagnostics_step_018000.png
+[step 018500] L_total=1.684e+00 L_pde=1.937e-01 L_wall=1.737e-05 L_in=1.054e-02 L_out=9.025e-08 L_per=7.204e-04 L_u_per=2.282e-05 L_v_per=2.393e-03
+[step 019000] L_total=1.731e+00 L_pde=1.975e-01 L_wall=1.631e-05 L_in=1.120e-02 L_out=9.269e-08 L_per=7.058e-04 L_u_per=5.870e-05 L_v_per=2.339e-03
+Saved checkpoint: checkpoints/ckpt_step_019000.pt
+Saved diagnostics to diagnostics_step_019000.png
+[step 019500] L_total=1.653e+00 L_pde=1.967e-01 L_wall=1.730e-05 L_in=1.041e-02 L_out=1.069e-07 L_per=6.957e-04 L_u_per=2.236e-05 L_v_per=2.312e-03
+[step 020000] L_total=1.695e+00 L_pde=1.954e-01 L_wall=1.678e-05 L_in=1.073e-02 L_out=1.282e-07 L_per=7.194e-04 L_u_per=2.381e-05 L_v_per=2.390e-03
+Saved checkpoint: checkpoints/ckpt_step_020000.pt
+Saved diagnostics to diagnostics_step_020000.png
+Starting L-BFGS refinement...
+L-BFGS done.
+Saved diagnostics to diagnostics_after_quick.png
+Quick-run Cl=1.0719e-02, Cd=-4.9263e-03
+
+Process finished with exit code 0
