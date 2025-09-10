@@ -56,8 +56,31 @@ def sobol_points(n, x_min, x_max, y_min, y_max, device=device, seed=None):
     x = x_min + (x_max - x_min) * pts[:, 0:1]
     y = y_min + (y_max - y_min) * pts[:, 1:2]
     return x, y
-
 # ----------------------
+# Checkpoint & CSV helpers (save training progress)
+# ----------------------
+import csv
+
+def save_checkpoint(path, model, optimizer, step, loss_dict):
+    """Save model + optimizer state to path (creates folder if needed)."""
+    ckpt = {
+        'step': step,
+        'model_state': model.state_dict(),
+        'optim_state': optimizer.state_dict(),
+        'loss_dict': loss_dict
+    }
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    torch.save(ckpt, path)
+
+def append_csv_metrics(csv_path, header, row):
+    """Append a row to csv_path, writing header if file doesn't exist."""
+    write_header = not os.path.exists(csv_path)
+    with open(csv_path, 'a', newline='') as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(header)
+        writer.writerow(row)
+
 # Geometry: NACA 0012 (simple symmetric thickness distribution)
 # ----------------------
 class NACA0012:
@@ -314,6 +337,13 @@ class CascadeFlowSolver:
         self.pool_domain_size = pool_domain_size
         self.pool_boundary_size = pool_boundary_size
 
+        # target v-derivative periodic weight (used inside compute_losses)
+        self.w_v_per_base = 0.30  # target value (what you set earlier)
+        self.w_v_per_current = 0.0  # will be warmed up during training
+        # optionally u-derivative base (keep small)
+        self.w_u_per_base = 0.05
+        self.w_u_per_current = 0.05
+
     # ----------------------
     # Collocation / sampling
     # ----------------------
@@ -338,6 +368,7 @@ class CascadeFlowSolver:
         inside_mask = self.airfoil.is_inside(x_cand, y_cand, pitch=self.pitch)
         x_dom = x_cand[~inside_mask][:n_domain]
         y_dom = y_cand[~inside_mask][:n_domain]
+
 
         # inlet and outlet points
         n_inlet = max(8, n_boundary // 4)
@@ -390,10 +421,38 @@ class CascadeFlowSolver:
         Returns: (L_total (tensor), loss_dict (python floats))
         """
         # Unpack
+        # Unpack
         x_dom, y_dom = samples['domain']
         x_in, y_in = samples['inlet']
         x_out, y_out = samples['outlet']
         x_surf, y_surf = samples['airfoil']
+
+        # ------------------------
+        # seam-focused sampling (augment domain collocation near left periodic seam)
+        # ------------------------
+        # fraction of domain batch to concentrate near seam (tune: 0.10-0.30)
+        seam_frac = 0.4
+        try:
+            n_dom_curr = int(x_dom.shape[0])
+        except Exception:
+            n_dom_curr = 0
+        n_seam = int(round(seam_frac * max(1, n_dom_curr)))
+
+        if n_seam > 0:
+            # seam width measured from x_min inward (tune: 0.25-1.0)
+            seam_width = 0.2
+            # uniform random sampling in x ∈ [x_min, x_min + seam_width], y ∈ [y_min, y_max]
+            x_seam = (torch.rand(n_seam, 1, device=device) * seam_width) + float(self.x_min)
+            y_seam = (torch.rand(n_seam, 1, device=device) * (self.y_max - self.y_min) + self.y_min)
+            # reject points inside the airfoil geometry
+            inside_mask_seam = self.airfoil.is_inside(x_seam, y_seam, pitch=self.pitch)
+            if inside_mask_seam.numel() > 0:
+                x_seam = x_seam[~inside_mask_seam]
+                y_seam = y_seam[~inside_mask_seam]
+            # concatenate seam points to domain batch
+            if x_seam.numel() > 0:
+                x_dom = torch.cat([x_dom, x_seam], dim=0)
+                y_dom = torch.cat([y_dom, y_seam], dim=0)
 
         # Ensure coordinates that will be differentiated have requires_grad=True
         x_dom = x_dom.clone().detach().to(device).requires_grad_(True)
@@ -427,41 +486,53 @@ class CascadeFlowSolver:
         _, p_out = self.model(x_out, y_out)
         L_out = (p_out.pow(2).mean())
 
-        # --- lateral periodic pairing (top vs bottom)
-        n_pairs = int(min(n_periodic_pairs, 4096))
+        # --- lateral periodic pairing (top vs bottom) - AUTOGRAD enforcement ---
+        # increase seam resolution to enforce periodic equality more densely
+        n_pairs = int(min(n_periodic_pairs, 2048))  # try 1024->2048; reduce if OOM
+
         # form x-pair grid
         x_pairs = torch.linspace(float(self.x_min), float(self.x_max), n_pairs, device=device).unsqueeze(1)
         y_top = torch.full_like(x_pairs, float(self.y_max), device=device)
         y_bot = torch.full_like(x_pairs, float(self.y_min), device=device)
-        # periodic psi and pressure at top/bottom
+
+        # ensure coords used for autograd have requires_grad=True
+        x_pairs = x_pairs.clone().detach().requires_grad_(True)
+        y_top = y_top.clone().detach().requires_grad_(True)
+        y_bot = y_bot.clone().detach().requires_grad_(True)
+
+        # evaluate model (psi, p) at top and bottom in same forward pass
         psi_top, p_top = self.model(x_pairs, y_top)
         psi_bot, p_bot = self.model(x_pairs, y_bot)
 
-        # finite-difference for velocities (no requires_grad needed)
-        eps = 1e-4
-        with torch.no_grad():
-            psi_top_yplus, _ = self.model(x_pairs, y_top + eps)
-            psi_top_yminus, _ = self.model(x_pairs, y_top - eps)
-            psi_top_xplus, _ = self.model(x_pairs + eps, y_top)
-            psi_top_xminus, _ = self.model(x_pairs - eps, y_top)
+        # direct psi and pressure matching (MSE)
+        L_psi_per = ((psi_top - psi_bot).pow(2).mean())
+        L_p_per = ((p_top - p_bot).pow(2).mean())
 
-            psi_bot_yplus, _ = self.model(x_pairs, y_bot + eps)
-            psi_bot_yminus, _ = self.model(x_pairs, y_bot - eps)
-            psi_bot_xplus, _ = self.model(x_pairs + eps, y_bot)
-            psi_bot_xminus, _ = self.model(x_pairs - eps, y_bot)
+        # OPTIONAL: enforce velocity equality via autograd (u = dpsi/dy, v = -dpsi/dx)
+        # This costs memory. Keep these weights at 0.0 initially; increase later if needed.
+        def _uv_from_psi_local(psi, x, y, create_graph=True):
+            ones = torch.ones_like(psi, device=psi.device)
+            dpsi_dx = torch.autograd.grad(psi, x, grad_outputs=ones, create_graph=create_graph, retain_graph=True)[0]
+            dpsi_dy = torch.autograd.grad(psi, y, grad_outputs=ones, create_graph=create_graph, retain_graph=True)[0]
+            u = dpsi_dy
+            v = -dpsi_dx
+            return u, v
 
-        u_top = (psi_top_yplus - psi_top_yminus) / (2 * eps)
-        v_top = -(psi_top_xplus - psi_top_xminus) / (2 * eps)
-        u_bot = (psi_bot_yplus - psi_bot_yminus) / (2 * eps)
-        v_bot = -(psi_bot_xplus - psi_bot_xminus) / (2 * eps)
+        # enable small velocity-matching weights to enforce derivative continuity across seam
+        # (raise gradually if needed; avoid too-large values that destabilize L_pde)
+        # increase v-derivative enforcement (v = -dpsi/dx) — target derivative mismatch at seam
+        # use the warmed-up derivative-periodic weights (set during training loop)
+        w_u_per = float(getattr(self, 'w_u_per_current', getattr(self, 'w_u_per_base', 0.05)))
+        w_v_per = float(getattr(self, 'w_v_per_current', getattr(self, 'w_v_per_base', 0.30)))
 
-        # periodicity loss
-        L_per = ((u_top - u_bot).pow(2).mean() +
-                 (v_top - v_bot).pow(2).mean() +
-                 (p_top - p_bot).pow(2).mean())
+        u_top, v_top = _uv_from_psi_local(psi_top, x_pairs, y_top, create_graph=True)
+        u_bot, v_bot = _uv_from_psi_local(psi_bot, x_pairs, y_bot, create_graph=True)
 
-        # --- psi periodic offset to fix additive constant
-        L_psi_per = ( (psi_top - psi_bot).pow(2).mean() )
+        L_u_per = ((u_top - u_bot).pow(2).mean())
+        L_v_per = ((v_top - v_bot).pow(2).mean())
+
+        # keep the periodic loss structure similar to original: velocity equality + pressure
+        L_per = (w_u_per * L_u_per + w_v_per * L_v_per + L_p_per)
 
         # --- pressure gauge anchor (single point) to fix global pressure offset
         try:
@@ -490,6 +561,8 @@ class CascadeFlowSolver:
             'L_out': float(L_out.detach().cpu().item()),
             'L_periodic': float(L_per.detach().cpu().item()),
             'L_psi_periodic': float(L_psi_per.detach().cpu().item()),
+            'L_u_periodic': float(L_u_per.detach().cpu().item()) if 'L_u_per' in locals() else 0.0,
+            'L_v_periodic': float(L_v_per.detach().cpu().item()) if 'L_v_per' in locals() else 0.0,
             'L_p_anchor': float(L_p_anchor.detach().cpu().item()) if isinstance(L_p_anchor, torch.Tensor) else 0.0
         }
 
@@ -730,7 +803,9 @@ class CascadeFlowSolver:
 
             self.optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
+            # gradient clipping to stabilize training (max norm)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            self.optimizer.step()
             self.optimizer.step()
             try:
                 self.scheduler.step()
@@ -738,18 +813,91 @@ class CascadeFlowSolver:
                 pass
 
             # warm-up weights (linear ramp to base)
+            # warm-up weights (linear ramp to base) — now includes derivative-periodic warmup
             if step <= warmup_steps:
-                alpha = step / warmup_steps
+                alpha = float(step) / float(max(1, warmup_steps))
+                start_fraction = 0.05  # start at 5% of the base weight, ramp to 100%
+                # existing global weights
                 self.w_phys = alpha * self.w_phys_base
                 self.w_in = alpha * self.w_in_base
                 self.w_out = alpha * self.w_out_base
                 self.w_foil = alpha * self.w_foil_base
                 self.w_per = alpha * self.w_per_base
+                # derivative-periodic weights (warmed up smoothly from a small fraction)
+                self.w_v_per_current = (start_fraction * (1.0 - alpha) + alpha) * float(self.w_v_per_base)
+                self.w_u_per_current = (start_fraction * (1.0 - alpha) + alpha) * float(self.w_u_per_base)
+            else:
+                # after warmup, lock to base values (keeps behaviour explicit & stable)
+                self.w_phys = float(self.w_phys_base)
+                self.w_in = float(self.w_in_base)
+                self.w_out = float(self.w_out_base)
+                self.w_foil = float(self.w_foil_base)
+                self.w_per = float(self.w_per_base)
+                self.w_v_per_current = float(self.w_v_per_base)
+                self.w_u_per_current = float(self.w_u_per_base)
 
             # logging
+            # logging + CSV + checkpointing + optional diagnostics snapshot
             if step % log_every == 0 or step == 1:
-                print(f"[step {step:06d}] L_total={loss_dict['L_total']:.3e} L_pde={loss_dict['L_pde']:.3e} "
-                      f"L_wall={loss_dict['L_wall']:.3e} L_in={loss_dict['L_inlet']:.3e} L_out={loss_dict['L_out']:.3e} L_per={loss_dict['L_periodic']:.3e}")
+                print(
+                    f"[step {step:06d}] L_total={loss_dict['L_total']:.3e} L_pde={loss_dict['L_pde']:.3e} "
+                    f"L_wall={loss_dict['L_wall']:.3e} L_in={loss_dict['L_inlet']:.3e} L_out={loss_dict['L_out']:.3e} "
+                    f"L_per={loss_dict.get('L_periodic', 0):.3e} L_u_per={loss_dict.get('L_u_periodic', 0):.3e} L_v_per={loss_dict.get('L_v_periodic', 0):.3e}"
+                )
+
+                # ------------------------
+                # CSV logging
+                # ------------------------
+                csv_path = 'training_metrics.csv'
+                header = ['step', 'L_total', 'L_pde', 'L_periodic', 'L_psi_per', 'L_u_per', 'L_v_per', 'Cl', 'Cd']
+                row = [
+                    step,
+                    loss_dict.get('L_total', 0.0),
+                    loss_dict.get('L_pde', 0.0),
+                    loss_dict.get('L_periodic', 0.0),
+                    loss_dict.get('L_psi_periodic', 0.0),
+                    loss_dict.get('L_u_periodic', 0.0),
+                    loss_dict.get('L_v_periodic', 0.0),
+                    float(getattr(self, 'last_Cl', 0.0)),
+                    float(getattr(self, 'last_Cd', 0.0))
+                ]
+                append_csv_metrics(csv_path, header, row)
+                # save best-so-far model by L_total
+                best_key = 'best_L_total'
+                current_L_total = float(loss_dict.get('L_total', 1e30))
+                if not hasattr(self, best_key) or current_L_total < getattr(self, best_key):
+                    # new best
+                    setattr(self, best_key, current_L_total)
+                    best_path = 'checkpoints/best_model.pt'
+                    try:
+                        save_checkpoint(best_path, self.model, self.optimizer, step, loss_dict)
+                        print(f"Saved best model (L_total={current_L_total:.3e}): {best_path}")
+                    except Exception as e:
+                        print("Warning: failed saving best model:", e)
+
+                # ------------------------
+                # Checkpoint every ckpt_every steps
+                # ------------------------
+                ckpt_every = 1000
+                if step % ckpt_every == 0:
+                    ckpt_path = f'checkpoints/ckpt_step_{step:06d}.pt'
+                    try:
+                        save_checkpoint(ckpt_path, self.model, self.optimizer, step, loss_dict)
+                        print(f"Saved checkpoint: {ckpt_path}")
+                    except Exception as e:
+                        print("Warning: failed saving checkpoint:", e)
+
+                # ------------------------
+                # Optional: save a diagnostics image less frequently (e.g. every 1000 steps)
+                # ------------------------
+                diag_every = 1000
+                if step % diag_every == 0:
+                    try:
+                        fname = f'diagnostics_step_{step:06d}.png'
+                        self.compute_diagnostics(fname=fname)
+                    except Exception as e:
+                        print("Warning: compute_diagnostics failed:", e)
+
             # store
             if step % max(1, int(n_steps/1000)) == 0:
                 self.loss_history.append(loss_dict)
@@ -790,9 +938,10 @@ def main(train_flag=True):
         # small quick run for debugging; increase n_steps when you are happy
 
         # ---quick test----: fewer steps, smaller batches, check periodic loss behaviour
-        solver.train(epochs=2000, print_every=100, batch_dom=5000, batch_bnd=1000, lbfgs_after=False)
+        #solver.train(epochs=3000, print_every=100, batch_dom=5000, batch_bnd=1000, lbfgs_after=False)
         #this was the long run:
         #solver.train(epochs=20000, print_every=500, batch_dom=20000, batch_bnd=4000, lbfgs_after=True)
+        solver.train(epochs=20000, print_every=500, batch_dom=20000, batch_bnd=4000, lbfgs_after=True)
 
         # diagnostics and forces after quick run
         solver.compute_diagnostics(fname='diagnostics_after_quick.png')
