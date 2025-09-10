@@ -1,0 +1,41 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/afterlongRun.py 
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Initial loss dict (smoke): {'L_total': 0.4021648168563843, 'L_pde': 0.008275294676423073, 'L_wall': 0.009656406939029694, 'L_inlet': 0.12840993702411652, 'L_out': 0.0011919091921299696, 'L_periodic': 0.008410914801061153, 'L_psi_periodic': 0.006284247152507305, 'L_u_periodic': 0.0002542213478591293, 'L_v_periodic': 1.0410918548586778e-05, 'L_p_anchor': 0.0008795229950919747}
+Starting training for 3000 steps; batch_domain=5000, batch_boundary=1000
+[step 000001] L_total=4.022e-01 L_pde=8.228e-03 L_wall=9.656e-03 L_in=1.325e-01 L_out=1.265e-03 L_per=8.411e-03 L_u_per=2.542e-04 L_v_per=1.041e-05
+[step 000100] L_total=4.187e+00 L_pde=9.555e-04 L_wall=3.790e-03 L_in=4.264e-02 L_out=6.076e-05 L_per=1.162e-03 L_u_per=6.518e-04 L_v_per=6.393e-03
+[step 000200] L_total=6.288e+00 L_pde=5.590e-03 L_wall=2.757e-03 L_in=3.345e-02 L_out=3.785e-04 L_per=5.557e-03 L_u_per=5.122e-05 L_v_per=9.977e-03
+[step 000300] L_total=4.958e+00 L_pde=1.899e-03 L_wall=3.061e-03 L_in=2.897e-02 L_out=6.137e-05 L_per=1.695e-03 L_u_per=1.557e-04 L_v_per=9.028e-03
+[step 000400] L_total=4.893e+00 L_pde=1.654e-03 L_wall=4.249e-03 L_in=2.524e-02 L_out=2.573e-04 L_per=1.184e-03 L_u_per=1.829e-04 L_v_per=9.265e-03
+[step 000500] L_total=5.479e+00 L_pde=1.098e-03 L_wall=3.742e-03 L_in=3.622e-02 L_out=2.795e-04 L_per=1.085e-03 L_u_per=1.731e-04 L_v_per=9.270e-03
+[step 000600] L_total=5.466e+00 L_pde=1.119e-03 L_wall=3.601e-03 L_in=3.659e-02 L_out=2.817e-06 L_per=1.046e-03 L_u_per=3.208e-04 L_v_per=1.009e-02
+[step 000700] L_total=4.521e+00 L_pde=1.443e-03 L_wall=2.792e-03 L_in=2.794e-02 L_out=8.778e-07 L_per=1.013e-03 L_u_per=5.250e-04 L_v_per=9.402e-03
+[step 000800] L_total=4.728e+00 L_pde=2.382e-03 L_wall=3.757e-03 L_in=2.579e-02 L_out=2.554e-04 L_per=2.026e-03 L_u_per=2.113e-03 L_v_per=9.558e-03
+[step 000900] L_total=3.352e+00 L_pde=1.026e-02 L_wall=5.246e-04 L_in=1.471e-02 L_out=5.742e-04 L_per=2.035e-03 L_u_per=4.577e-03 L_v_per=1.458e-02
+[step 001000] L_total=3.165e+00 L_pde=3.711e-02 L_wall=1.429e-03 L_in=1.377e-02 L_out=5.855e-06 L_per=2.318e-03 L_u_per=3.818e-03 L_v_per=1.929e-02
+[step 001100] L_total=2.839e+00 L_pde=6.566e-02 L_wall=1.744e-03 L_in=1.098e-02 L_out=3.189e-06 L_per=2.223e-03 L_u_per=1.929e-03 L_v_per=2.021e-02
+[step 001200] L_total=2.477e+00 L_pde=9.101e-02 L_wall=7.498e-04 L_in=9.975e-03 L_out=3.662e-06 L_per=2.149e-03 L_u_per=1.258e-03 L_v_per=2.016e-02
+[step 001300] L_total=2.485e+00 L_pde=1.097e-01 L_wall=1.279e-03 L_in=9.296e-03 L_out=5.090e-05 L_per=2.110e-03 L_u_per=1.068e-03 L_v_per=1.994e-02
+[step 001400] L_total=2.552e+00 L_pde=1.136e-01 L_wall=1.515e-03 L_in=1.059e-02 L_out=4.335e-06 L_per=1.959e-03 L_u_per=9.703e-04 L_v_per=1.858e-02
+[step 001500] L_total=2.573e+00 L_pde=1.204e-01 L_wall=1.530e-03 L_in=6.734e-03 L_out=6.161e-04 L_per=2.030e-03 L_u_per=4.941e-04 L_v_per=1.898e-02
+[step 001600] L_total=2.394e+00 L_pde=1.169e-01 L_wall=1.247e-04 L_in=9.471e-03 L_out=9.702e-04 L_per=1.915e-03 L_u_per=5.938e-04 L_v_per=1.726e-02
+[step 001700] L_total=2.500e+00 L_pde=1.279e-01 L_wall=1.504e-03 L_in=8.426e-03 L_out=6.026e-05 L_per=1.782e-03 L_u_per=4.516e-04 L_v_per=1.724e-02
+[step 001800] L_total=2.294e+00 L_pde=1.229e-01 L_wall=4.688e-04 L_in=8.908e-03 L_out=5.539e-05 L_per=1.834e-03 L_u_per=3.924e-04 L_v_per=1.781e-02
+[step 001900] L_total=2.552e+00 L_pde=1.106e-01 L_wall=6.724e-04 L_in=1.200e-02 L_out=9.473e-06 L_per=1.741e-03 L_u_per=3.172e-04 L_v_per=1.706e-02
+[step 002000] L_total=2.394e+00 L_pde=9.815e-02 L_wall=4.419e-05 L_in=1.048e-02 L_out=9.677e-05 L_per=2.675e-03 L_u_per=4.798e-04 L_v_per=1.555e-02
+[step 002100] L_total=2.089e+00 L_pde=1.025e-01 L_wall=1.579e-04 L_in=8.682e-03 L_out=2.055e-04 L_per=1.843e-03 L_u_per=5.226e-04 L_v_per=1.767e-02
+[step 002200] L_total=2.322e+00 L_pde=9.268e-02 L_wall=1.441e-04 L_in=1.189e-02 L_out=7.162e-04 L_per=1.720e-03 L_u_per=6.716e-04 L_v_per=1.495e-02
+[step 002300] L_total=2.028e+00 L_pde=8.191e-02 L_wall=7.718e-05 L_in=9.849e-03 L_out=3.758e-04 L_per=1.630e-03 L_u_per=6.268e-04 L_v_per=1.517e-02
+[step 002400] L_total=1.900e+00 L_pde=8.095e-02 L_wall=9.374e-05 L_in=7.380e-03 L_out=2.735e-04 L_per=1.729e-03 L_u_per=5.769e-04 L_v_per=1.634e-02
+[step 002500] L_total=1.932e+00 L_pde=7.081e-02 L_wall=6.478e-05 L_in=1.017e-02 L_out=6.582e-06 L_per=1.572e-03 L_u_per=5.057e-04 L_v_per=1.479e-02
+[step 002600] L_total=2.123e+00 L_pde=7.339e-02 L_wall=1.107e-04 L_in=9.957e-03 L_out=1.117e-04 L_per=1.729e-03 L_u_per=6.263e-04 L_v_per=1.631e-02
+[step 002700] L_total=2.062e+00 L_pde=7.314e-02 L_wall=6.497e-05 L_in=1.030e-02 L_out=4.528e-04 L_per=1.630e-03 L_u_per=1.435e-03 L_v_per=1.424e-02
+[step 002800] L_total=1.754e+00 L_pde=7.754e-02 L_wall=4.717e-05 L_in=8.749e-03 L_out=4.949e-04 L_per=1.505e-03 L_u_per=1.932e-03 L_v_per=1.308e-02
+[step 002900] L_total=1.988e+00 L_pde=8.781e-02 L_wall=9.910e-04 L_in=8.046e-03 L_out=9.557e-06 L_per=1.605e-03 L_u_per=1.998e-03 L_v_per=1.281e-02
+[step 003000] L_total=1.746e+00 L_pde=7.370e-02 L_wall=1.269e-04 L_in=7.457e-03 L_out=1.025e-04 L_per=1.663e-03 L_u_per=5.997e-04 L_v_per=1.543e-02
+Saved diagnostics to diagnostics_after_quick.png
+Quick-run Cl=5.2153e-04, Cd=5.7149e-03
+
+Process finished with exit code 0
