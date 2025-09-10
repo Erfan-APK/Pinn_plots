@@ -3,12 +3,27 @@ Using device: cuda
 GPU: NVIDIA GeForce RTX 3080
 Memory Allocated: 0.00 MB
 Imported module: Pinn2
-Candidate solver classes found in module: ['CascadeFlowSolver', 'PINN']
+Candidate solver classes: ['CascadeFlowSolver', 'PINN']
 Instantiated CascadeFlowSolver with no args.
-Solver object obtained. Moving on to load checkpoint.
-Using device: cuda
+Solver object obtained. Now loading checkpoint: checkpoints/best_model.pt
+Checkpoint loaded (raw).
+Checkpoint top-level keys and types:
+  step -> int
+  model_state -> OrderedDict
+  optim_state -> dict
+  loss_dict -> dict
+  scheduler_state -> dict
+Trying to load state dict from key: <top_level_state_dict>
+Failed to load from <top_level_state_dict>: Error(s) in loading state_dict for PINN:
+	Missing key(s) in state_dict: "x_mean", "x_scale", "y_mean", "y_scale", "psi_scale", "p_scale", "net.0.weight", "net.0.bias", "net.2.weight", "net.2.bias", "net.4.weight", "net.4.bias", "net.6.weight", "net.6.bias", "net.8.weight", "net.8.bias", "net.10.weight", "net.10.bias". 
+	Unexpected key(s) in state_dict: "step", "model_state", "optim_state", "loss_dict", "scheduler_state". 
+Trying to load state dict from key: model_state
+Loaded state dict successfully from: model_state
+Model moved to device: cuda
+Running compute_diagnostics() ...
 Saved diagnostics to diagnostics_from_best_model.png
 Diagnostics saved to: diagnostics_from_best_model.png
+Running compute_forces() ...
 compute_forces result: (0.010818712983599987, -0.000657028753565941, array([0.00000000e+00, 1.54211776e-05, 6.16837592e-05, 1.38784891e-04,
        2.46719817e-04, 3.85481880e-04, 5.55062519e-04, 7.55451275e-04,
        9.86635786e-04, 1.24860179e-03, 1.54133313e-03, 1.86481175e-03,
