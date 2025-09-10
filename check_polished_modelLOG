@@ -1,0 +1,13 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/check_polished_model.py 
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Solver constructed.
+Loaded polished model: checkpoints/polished_seam_model.pt
+Polished seam RMS — u: 1.128951e-02, v: 1.341203e-02
+Domain residual (mean,std): 0.05849365144968033 0.12813535332679749
+Seam psi RMS: 0.0008012439939193428
+Seam p RMS: 0.010590695776045322
+Done.
+
+Process finished with exit code 0
