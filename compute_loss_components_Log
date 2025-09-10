@@ -1,0 +1,14 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/compute_loss_components.py 
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Traceback (most recent call last):
+  File "/mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/compute_loss_components.py", line 48, in <module>
+    Ld_mean, Ld_std = sample_domain_residual(N_dom)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/compute_loss_components.py", line 39, in sample_domain_residual
+    xs, ys = solver.sobol_points(N, solver.x_min, solver.x_max, solver.y_min, solver.y_max)
+             ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'CascadeFlowSolver' object has no attribute 'sobol_points'
+
+Process finished with exit code 1
