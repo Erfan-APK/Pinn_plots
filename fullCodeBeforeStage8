@@ -316,6 +316,13 @@ class CascadeFlowSolver:
         self.w_per = float(self.w_per_base)
         self.w_gauge = float(self.w_gauge_base)
 
+        # --- streamfunction / pressure anchoring (added)
+        self.U = 1.0  # free-stream nondim velocity
+        self.w_psi_periodic = 10.0  # weight for psi periodic offset constraint
+        self.w_p_anchor = 100.0  # weight for single-point pressure anchor (gauge)
+        self.x_out_anchor = self.x_max  # anchor at outlet plane (adjust if needed)
+        self.y_anchor = 0.0  # anchor on centerline (adjust if needed)
+
     def compute_diagnostics(self, nx=220, ny=140, fname='diagnostics.png'):
         """
         Robust diagnostics (no autograd graph reuse):
@@ -397,12 +404,43 @@ class CascadeFlowSolver:
         x_lo = x_surf
         y_lo = -y_surf - delta
 
-        _, _, p_up = self.predict(x_up, y_up)
-        _, _, p_lo = self.predict(x_lo, y_lo)
-        p_inf = self.estimate_p_inlet_mean(n=1024)
-        q_inf = 0.5 * 1.0 ** 2
-        cp_up = (p_up - p_inf) / q_inf
-        cp_lo = (p_lo - p_inf) / q_inf
+        # --- high-res surface Cp (diagnostics)
+        # create surface sampling (the code you already have that computes x_up, y_up, x_lo, y_lo)
+        # -- convert to tensors
+        xtu = torch.tensor(x_up, dtype=torch.float32, device=device).unsqueeze(1)
+        ytu = torch.tensor(y_up, dtype=torch.float32, device=device).unsqueeze(1)
+        xtl = torch.tensor(x_lo, dtype=torch.float32, device=device).unsqueeze(1)
+        ytl = torch.tensor(y_lo, dtype=torch.float32, device=device).unsqueeze(1)
+
+        # evaluate model pressure on surface (no_grad)
+        with torch.no_grad():
+            _, p_u = self.model(xtu, ytu)
+            _, p_l = self.model(xtl, ytl)
+
+        p_up = p_u.detach().cpu().numpy().ravel()
+        p_lo = p_l.detach().cpu().numpy().ravel()
+
+        # Prefer the single-point pressure anchor if available (use it as reference)
+        try:
+            # If you defined self.x_out_anchor / self.y_anchor and use p_anchor in losses:
+            xta = torch.tensor([[self.x_out_anchor]], dtype=torch.float32, device=device)
+            yta = torch.tensor([[self.y_anchor]], dtype=torch.float32, device=device)
+            with torch.no_grad():
+                _, p_anchor_t = self.model(xta, yta)
+            p_ref = float(p_anchor_t.detach().cpu().numpy().ravel()[0])
+        except Exception:
+            # fallback to inlet mean estimate (or zero)
+            try:
+                p_ref = float(self.estimate_p_inlet_mean(n=1024))
+            except Exception:
+                p_ref = 0.0
+
+        q_inf = 0.5 * (self.U ** 2)  # nondim, U=1 by default
+        cp_up = (p_up - p_ref) / q_inf
+        cp_lo = (p_lo - p_ref) / q_inf
+
+        # debug prints (temporary): uncomment if cp still flat
+        # print("DEBUG p_up min,max:", p_up.min(), p_up.max(), "p_lo min,max:", p_lo.min(), p_lo.max(), "p_ref:", p_ref)
 
         # --- plotting
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
@@ -740,26 +778,35 @@ class CascadeFlowSolver:
         v_bot = -torch.autograd.grad(psi_bot, x_per, torch.ones_like(psi_bot), retain_graph=True, create_graph=True)[0]
 
         # prefer velocities + small psi continuity (psi difference is often gauge-like; keep small weight)
+        # --- Periodic BC: prefer velocity match but enforce a physical psi *offset* (mass flux)
         periodic_vel_loss = torch.mean((u_top - u_bot) ** 2 + (v_top - v_bot) ** 2)
-        periodic_psi_loss = torch.mean((psi_top - psi_bot) ** 2) * 0.01  # tiny weight for psi offset consistency
-        # --- Pressure periodic consistency (small penalty to align pressure gauge across periodic sides)
-        # This prevents a pressure offset between top and bottom periodic boundaries
-        # (small weight; tune later in Stage A).
-        # --- Pressure periodic consistency (small penalty to align pressure gauge across periodic sides)
-        p_per_loss = torch.mean((p_top - p_bot) ** 2) * 0.08
-        periodic_loss = periodic_vel_loss + periodic_psi_loss + p_per_loss
 
-        # --- Pressure gauge: small penalty on mean inlet pressure to fix gauge
-        p_in_mean = torch.mean(p_in)
-        gauge_loss = p_in_mean ** 2
+        # **IMPORTANT**: streamfunction offset (psi_top - psi_bot) should equal U * pitch (mass flux)
+        desired_psi_offset = self.U * self.pitch
+        loss_psi_offset = torch.mean((psi_top - psi_bot - desired_psi_offset) ** 2)
 
-        # --- Use current (possibly warmed-up) weights stored on self
-        total_loss = (self.w_phys * physics_loss +
-                      self.w_in * inlet_loss +
-                      self.w_out * outlet_loss +
-                      self.w_foil * airfoil_loss +
-                      self.w_per * periodic_loss +
-                      self.w_gauge * gauge_loss)
+        # small optional pressure periodic penalty (keep small)
+        p_per_loss = torch.mean((p_top - p_bot) ** 2) * 0.01
+
+        # combine periodic losses (scale via self.w_per at top-level)
+        periodic_loss = periodic_vel_loss + 0.01 * loss_psi_offset + p_per_loss
+
+        # --- Replace the previous gauge: use a strong single-point pressure anchor at outlet center
+        # anchor pressure so global p offset is pinned (p_anchor -> 0.0)
+        x_anchor = torch.tensor([[self.x_out_anchor]], dtype=torch.float32, device=device)
+        y_anchor = torch.tensor([[self.y_anchor]], dtype=torch.float32, device=device)
+        _, p_anchor = self.model(x_anchor, y_anchor)
+        loss_p_anchor = torch.mean((p_anchor - 0.0) ** 2)
+        gauge_loss = loss_p_anchor
+
+        # Build the final total loss using weights (note psi-offset has its own configured weight)
+        total_loss = (self.w_phys * physics_loss
+                      + self.w_in * inlet_loss
+                      + self.w_out * outlet_loss
+                      + self.w_foil * airfoil_loss
+                      + self.w_per * periodic_loss
+                      + self.w_psi_periodic * loss_psi_offset
+                      + self.w_p_anchor * loss_p_anchor)
 
         return total_loss, {
             'physics': physics_loss.item(),
@@ -1317,6 +1364,7 @@ def main():
     print("Analysis Complete!")
     print("=" * 60)
     solver.compute_diagnostics()
+    fig = None
     return solver, fig
 
 
