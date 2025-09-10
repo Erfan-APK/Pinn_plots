@@ -1,0 +1,9 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/seam_rms_check.py 
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Solver instance obtained. Loading checkpoint: checkpoints/best_model.pt
+Loaded weights from checkpoint key: 'model_state'
+Seam RMS mismatch — u: 1.003e+00, v: 7.214e-02
+
+Process finished with exit code 0
