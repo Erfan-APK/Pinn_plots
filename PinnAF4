@@ -56,8 +56,31 @@ def sobol_points(n, x_min, x_max, y_min, y_max, device=device, seed=None):
     x = x_min + (x_max - x_min) * pts[:, 0:1]
     y = y_min + (y_max - y_min) * pts[:, 1:2]
     return x, y
-
 # ----------------------
+# Checkpoint & CSV helpers (save training progress)
+# ----------------------
+import csv
+
+def save_checkpoint(path, model, optimizer, step, loss_dict):
+    """Save model + optimizer state to path (creates folder if needed)."""
+    ckpt = {
+        'step': step,
+        'model_state': model.state_dict(),
+        'optim_state': optimizer.state_dict(),
+        'loss_dict': loss_dict
+    }
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    torch.save(ckpt, path)
+
+def append_csv_metrics(csv_path, header, row):
+    """Append a row to csv_path, writing header if file doesn't exist."""
+    write_header = not os.path.exists(csv_path)
+    with open(csv_path, 'a', newline='') as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(header)
+        writer.writerow(row)
+
 # Geometry: NACA 0012 (simple symmetric thickness distribution)
 # ----------------------
 class NACA0012:
@@ -812,12 +835,54 @@ class CascadeFlowSolver:
                 self.w_u_per_current = float(self.w_u_per_base)
 
             # logging
+            # logging + CSV + checkpointing + optional diagnostics snapshot
             if step % log_every == 0 or step == 1:
                 print(
                     f"[step {step:06d}] L_total={loss_dict['L_total']:.3e} L_pde={loss_dict['L_pde']:.3e} "
                     f"L_wall={loss_dict['L_wall']:.3e} L_in={loss_dict['L_inlet']:.3e} L_out={loss_dict['L_out']:.3e} "
                     f"L_per={loss_dict.get('L_periodic', 0):.3e} L_u_per={loss_dict.get('L_u_periodic', 0):.3e} L_v_per={loss_dict.get('L_v_periodic', 0):.3e}"
                 )
+
+                # ------------------------
+                # CSV logging
+                # ------------------------
+                csv_path = 'training_metrics.csv'
+                header = ['step', 'L_total', 'L_pde', 'L_periodic', 'L_psi_per', 'L_u_per', 'L_v_per', 'Cl', 'Cd']
+                row = [
+                    step,
+                    loss_dict.get('L_total', 0.0),
+                    loss_dict.get('L_pde', 0.0),
+                    loss_dict.get('L_periodic', 0.0),
+                    loss_dict.get('L_psi_periodic', 0.0),
+                    loss_dict.get('L_u_periodic', 0.0),
+                    loss_dict.get('L_v_periodic', 0.0),
+                    float(getattr(self, 'last_Cl', 0.0)),
+                    float(getattr(self, 'last_Cd', 0.0))
+                ]
+                append_csv_metrics(csv_path, header, row)
+
+                # ------------------------
+                # Checkpoint every ckpt_every steps
+                # ------------------------
+                ckpt_every = 1000
+                if step % ckpt_every == 0:
+                    ckpt_path = f'checkpoints/ckpt_step_{step:06d}.pt'
+                    try:
+                        save_checkpoint(ckpt_path, self.model, self.optimizer, step, loss_dict)
+                        print(f"Saved checkpoint: {ckpt_path}")
+                    except Exception as e:
+                        print("Warning: failed saving checkpoint:", e)
+
+                # ------------------------
+                # Optional: save a diagnostics image less frequently (e.g. every 1000 steps)
+                # ------------------------
+                diag_every = 1000
+                if step % diag_every == 0:
+                    try:
+                        fname = f'diagnostics_step_{step:06d}.png'
+                        self.compute_diagnostics(fname=fname)
+                    except Exception as e:
+                        print("Warning: compute_diagnostics failed:", e)
 
             # store
             if step % max(1, int(n_steps/1000)) == 0:
