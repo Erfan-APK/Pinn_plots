@@ -281,6 +281,45 @@ class PINN(nn.Module):
         r_scalar = r.view(r.shape[0], -1).mean(dim=1).detach().cpu()
         return r_scalar
 
+    # ----------------------
+    # Adaptive residual sampling helpers
+    # ----------------------
+    import numpy as np
+    import torch
+
+    def compute_residual_grid(self, nx=200, ny=100):
+        """
+        Evaluate coarse residual grid on model (returns X, Y, R arrays on CPU).
+        X,Y shape = (ny, nx) as in np.meshgrid; R is 1D raveled array of residual magnitudes.
+        This uses autograd-safe evaluation via self.model.physics_loss with requires_grad.
+        """
+        xs = np.linspace(float(self.x_min), float(self.x_max), nx, dtype=np.float32)
+        ys = np.linspace(float(self.y_min), float(self.y_max), ny, dtype=np.float32)
+        X, Y = np.meshgrid(xs, ys, indexing='xy')
+        xt = torch.tensor(X.ravel()[:, None], dtype=torch.float32, device=device, requires_grad=True)
+        yt = torch.tensor(Y.ravel()[:, None], dtype=torch.float32, device=device, requires_grad=True)
+        # compute physics residuals (mx,my,cont) on the coarse grid
+        with torch.enable_grad():
+            mx, my, cont = self.model.physics_loss(xt, yt)
+        R = (mx.detach() ** 2 + my.detach() ** 2 + cont.detach() ** 2).cpu().numpy().ravel()
+        return X, Y, R
+
+    def sample_from_residual_grid(X, Y, R, n_samples, exponent=1.5):
+        """
+        Given coarse grid arrays X,Y and residual array R (raveled), sample n_samples points
+        with probability ~ R**exponent. Returns (x_samples_tensor, y_samples_tensor) on device.
+        """
+        probs = (R + 1e-12) ** float(exponent)
+        probs = probs / probs.sum()
+        idx = np.random.choice(len(probs), size=n_samples, p=probs)
+        x_samples = X.ravel()[idx][:, None].astype(np.float32)
+        y_samples = Y.ravel()[idx][:, None].astype(np.float32)
+        return (
+            torch.tensor(x_samples, dtype=torch.float32, device=device),
+            torch.tensor(y_samples, dtype=torch.float32, device=device)
+        )
+
+
 # ----------------------
 # Solver
 # ----------------------
@@ -320,11 +359,13 @@ class CascadeFlowSolver:
         self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=20000, eta_min=1e-6)
 
         # sampling and adaptive params
-        self.use_residual_adaptive = use_residual_adaptive
-        self.resample_every = resample_every
+        self.use_residual_adaptive = True
+        self.resample_every = 250        # refresh coarse grid every 250 steps
+        self.hybrid_fraction = 0.6  # 60% of domain batch from residual sampling
         self.pool_domain_size = pool_domain_size
         self.pool_boundary_size = pool_boundary_size
-        self.hybrid_fraction = hybrid_fraction
+        # coarse grid resolution to compute residual map (reduce if OOM)
+        # residual grid sizes are set in the mixing block (residual_nx, residual_ny)
         self.n_cand_max = n_cand_max
         self.cand_batch_size = cand_batch_size
 
@@ -708,7 +749,11 @@ class CascadeFlowSolver:
         denom = 0.5 * 1.0 * (self.U ** 2) * self.chord
         C_D = F_x / denom
         C_L = F_y / denom
+        # store last computed forces for logging
+        self.last_Cl = float(C_L)
+        self.last_Cd = float(C_D)
         return C_L, C_D, xs, ys, p_vals, tx, ty
+
 
     # ----------------------
     # Diagnostics (plots)
@@ -826,6 +871,54 @@ class CascadeFlowSolver:
         for step in range(start_step + 1, n_steps + 1):
 
             samples = self.generate_collocation_points(n_domain=batch_domain, n_boundary=batch_boundary, seed=step)
+            # ------------------------------
+            # Adaptive-residual sampling mix (in training loop, after samples generated)
+            # ------------------------------
+            # Parameters (tune if OOM: reduce grid nx,ny or residual_fraction)
+            adaptive_T = getattr(self, 'resample_every', 250)  # refresh freq (steps)
+            residual_fraction = getattr(self, 'hybrid_fraction', 0.6)  # fraction of domain batch from residuals
+            residual_nx = 200
+            residual_ny = 100
+            residual_exponent = 1.5  # >1 focuses more on high residuals
+
+            # persistent placeholders on solver instance (created first time used)
+            if not hasattr(self, '_adaptive_res_X'):
+                self._adaptive_res_X = None
+                self._adaptive_res_Y = None
+                self._adaptive_res_R = None
+
+            # update coarse residual grid every adaptive_T steps
+            if step % adaptive_T == 0:
+                try:
+                    self._adaptive_res_X, self._adaptive_res_Y, self._adaptive_res_R = compute_residual_grid(self,
+                                                                                                             nx=residual_nx,
+                                                                                                             ny=residual_ny)
+                except Exception as e:
+                    # if residual grid computation fails, keep previous grid (or None)
+                    print("Warning: compute_residual_grid failed:", e)
+                    self._adaptive_res_X, self._adaptive_res_Y, self._adaptive_res_R = None, None, None
+
+            # if we have a residual grid, sample from it and mix into the domain batch
+            if getattr(self, '_adaptive_res_X', None) is not None:
+                try:
+                    # original domain batch
+                    x_dom, y_dom = samples['domain']
+                    n_dom = int(x_dom.shape[0])
+                    n_res = int(round(residual_fraction * n_dom))
+                    n_uniform = max(0, n_dom - n_res)
+                    # sample residual points
+                    x_res, y_res = sample_from_residual_grid(self._adaptive_res_X, self._adaptive_res_Y,
+                                                             self._adaptive_res_R, n_res, exponent=residual_exponent)
+                    # keep the first n_uniform points from current domain as uniform complement (or resample)
+                    x_uniform = x_dom[:n_uniform]
+                    y_uniform = y_dom[:n_uniform]
+                    # build new mixed domain batch and update samples
+                    x_dom = torch.cat([x_uniform.to(device), x_res], dim=0).requires_grad_(True)
+                    y_dom = torch.cat([y_uniform.to(device), y_res], dim=0).requires_grad_(True)
+                    samples['domain'] = (x_dom, y_dom)
+                except Exception as e:
+                    print("Warning: adaptive mixing failed:", e)
+            # else: no grid available yet -> use original samples as-is
 
             loss, loss_dict = self.compute_losses(samples)
 
