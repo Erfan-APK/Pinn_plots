@@ -814,6 +814,8 @@ class CascadeFlowSolver:
         if 'resume_path' in locals() and resume_path is not None:
             try:
                 start_step = load_checkpoint(resume_path, self.model, self.optimizer, self.scheduler)
+                print("Resumed from checkpoint. LR after load:", self.scheduler.get_last_lr()[0])
+
             except Exception as e:
                 print("Warning: failed to resume from resume_path:", e)
 
@@ -865,11 +867,16 @@ class CascadeFlowSolver:
             # logging
             # logging + CSV + checkpointing + optional diagnostics snapshot
             if step % log_every == 0 or step == 1:
-                print(
-                    f"[step {step:06d}] L_total={loss_dict['L_total']:.3e} L_pde={loss_dict['L_pde']:.3e} "
-                    f"L_wall={loss_dict['L_wall']:.3e} L_in={loss_dict['L_inlet']:.3e} L_out={loss_dict['L_out']:.3e} "
-                    f"L_per={loss_dict.get('L_periodic', 0):.3e} L_u_per={loss_dict.get('L_u_periodic', 0):.3e} L_v_per={loss_dict.get('L_v_periodic', 0):.3e}"
-                )
+                # logging + CSV + checkpointing + optional diagnostics snapshot
+                if step % log_every == 0 or step == 1:
+                    # get current LR (scheduler.get_last_lr() returns a list)
+                    lr = self.scheduler.get_last_lr()[0] if hasattr(self, 'scheduler') else 0.0
+                    print(
+                        f"[step {step:06d}] L_total={loss_dict['L_total']:.3e} L_pde={loss_dict['L_pde']:.3e} "
+                        f"L_wall={loss_dict['L_wall']:.3e} L_in={loss_dict['L_inlet']:.3e} L_out={loss_dict['L_out']:.3e} "
+                        f"L_per={loss_dict.get('L_periodic', 0):.3e} L_u_per={loss_dict.get('L_u_periodic', 0):.3e} L_v_per={loss_dict.get('L_v_periodic', 0):.3e} LR={lr:.3e}"
+                    )
+                    ...
 
                 # ------------------------
                 # CSV logging
@@ -896,7 +903,7 @@ class CascadeFlowSolver:
                     setattr(self, best_key, current_L_total)
                     best_path = 'checkpoints/best_model.pt'
                     try:
-                        save_checkpoint(best_path, self.model, self.optimizer, step, loss_dict)
+                        save_checkpoint(best_path, self.model, self.optimizer, step, loss_dict, self.scheduler)
                         print(f"Saved best model (L_total={current_L_total:.3e}): {best_path}")
                     except Exception as e:
                         print("Warning: failed saving best model:", e)
@@ -908,7 +915,7 @@ class CascadeFlowSolver:
                 if step % ckpt_every == 0:
                     ckpt_path = f'checkpoints/ckpt_step_{step:06d}.pt'
                     try:
-                        save_checkpoint(ckpt_path, self.model, self.optimizer, step, loss_dict)
+                        save_checkpoint(ckpt_path, self.model, self.optimizer, step, loss_dict, self.scheduler)
                         print(f"Saved checkpoint: {ckpt_path}")
                     except Exception as e:
                         print("Warning: failed saving checkpoint:", e)
@@ -967,7 +974,11 @@ def main(train_flag=True):
         #solver.train(epochs=3000, print_every=100, batch_dom=5000, batch_bnd=1000, lbfgs_after=False)
         #this was the long run:
         #solver.train(epochs=20000, print_every=500, batch_dom=20000, batch_bnd=4000, lbfgs_after=True)
-        solver.train(epochs=20000, print_every=500, batch_dom=20000, batch_bnd=4000, lbfgs_after=True)
+        #solver.train(epochs=20000, print_every=500, batch_dom=20000, batch_bnd=4000, lbfgs_after=True)
+
+        #FOR RESUME TEST: example: resume for 200 steps to test
+        solver.train(epochs=5000, print_every=100, batch_dom=5000, batch_bnd=1000, lbfgs_after=False, resume_path='checkpoints/best_model.pt')
+
 
         # diagnostics and forces after quick run
         solver.compute_diagnostics(fname='diagnostics_after_quick.png')
