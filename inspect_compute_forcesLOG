@@ -1,0 +1,27 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/inspect_compute_forces.py 
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Device: cuda
+compute_forces signature: (n_surface=800)
+compute_forces returned type: <class 'tuple'>
+Returned tuple/list length: 7
+  [0] type=<class 'numpy.float64'>, shape=(), repr: 0.003146454824462186
+  [1] type=<class 'numpy.float64'>, shape=(), repr: -0.029871768246634067
+  [2] type=<class 'numpy.ndarray'>, shape=(801,), repr: array([0.00000000e+00, 1.54211776e-05, 6.16837592e-05, 1.38784891e-04,
+       2.46719817e-04, 3.85481880e-04, 5.55062519e-04, 7.55451275e-04,
+       9.86635786e-04, 1.24860179e-03, 1.54133313e-03, 1.8
+  [3] type=<class 'numpy.ndarray'>, shape=(801,), repr: array([ 1.7814000e-07,  6.9838646e-04,  1.3944299e-03,  2.0881176e-03,
+        2.7794370e-03,  3.4683726e-03,  4.1549089e-03,  4.8390306e-03,
+        5.5207182e-03,  6.1999545e-03,  6.8767187e-03,  7.
+  [4] type=<class 'numpy.ndarray'>, shape=(801,), repr: array([-0.520592  , -0.5205754 , -0.5205624 , -0.5205523 , -0.52054596,
+       -0.5205429 , -0.52054316, -0.5205468 , -0.52055395, -0.52056456,
+       -0.5205785 , -0.5205959 , -0.5206166 , -0.520641 
+  [5] type=<class 'numpy.ndarray'>, shape=(801,), repr: array([-1.60906204e-04, -1.22457082e-04, -8.41395658e-05, -4.61859963e-05,
+       -8.82016797e-06,  2.77441406e-05,  6.33165271e-05,  9.77258365e-05,
+        1.30828780e-04,  1.62506715e-04,  1.926698
+  [6] type=<class 'numpy.ndarray'>, shape=(801,), repr: array([-8.55276024e-04, -8.54948055e-04, -8.52870474e-04, -8.49036467e-04,
+       -8.43470147e-04, -8.36227978e-04, -8.27386947e-04, -8.17047621e-04,
+       -8.05326540e-04, -7.92351824e-04, -7.782661
+
+Process finished with exit code 0
