@@ -1,0 +1,1085 @@
+"""
+Physics-Informed Neural Network (PINN) for 2D NACA 0012 Cascade Flow Simulation
+Using streamfunction (psi) + pressure (p) representation so continuity is satisfied exactly.
+
+This version includes:
+- Warm-up schedule for physics/BC weights (helps BCs settle before strong physics forcing).
+- Selective + thinned residual-adaptive resampling (prevents selecting all candidates).
+- Safer Cp evaluation (sample slightly outside the solid surface).
+- Predict() guards: if FD stencil would land inside the foil, use a larger eps to keep
+  stencil points in the fluid region (reduces NaNs).
+- Default cand_batch_size reduced to 512 for more stability on mid-range GPUs.
+"""
+
+import warnings
+warnings.filterwarnings('ignore')
+
+import time
+import numpy as np
+import torch
+import torch.nn as nn
+import matplotlib.pyplot as plt
+from torch.quasirandom import SobolEngine
+
+# Device setup
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f"Using device: {device}")
+if device.type == 'cuda':
+    try:
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+        print(f"Memory Allocated: {torch.cuda.memory_allocated(0) / 1024 ** 2:.2f} MB")
+    except Exception:
+        pass
+
+# Reproducibility
+torch.manual_seed(42)
+np.random.seed(42)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(42)
+
+
+def sobol_points(n, x_min, x_max, y_min, y_max, device, seed=42):
+    """Return n Sobol points in the rectangle as column tensors (x, y)."""
+    if n <= 0:
+        return torch.empty((0, 1), device=device), torch.empty((0, 1), device=device)
+    sobol = SobolEngine(dimension=2, scramble=True, seed=seed)
+    pts = sobol.draw(n).to(torch.float32).to(device)  # shape (n, 2)
+    x = x_min + (x_max - x_min) * pts[:, 0:1]
+    y = y_min + (y_max - y_min) * pts[:, 1:2]
+    return x, y
+
+
+class NACA0012:
+    """NACA 0012 airfoil geometry"""
+    def __init__(self, chord=1.0, t=0.12):
+        self.chord = chord
+        self.t = t
+
+    def surface(self, x):
+        """Calculate half-thickness y-coordinate of NACA 0012 surface for given x (tensor)"""
+        xc = torch.clamp(x / self.chord, 0.0, 1.0)
+        yt = 5 * self.t * (
+            0.2969 * torch.sqrt(xc + 1e-12) -
+            0.1260 * xc -
+            0.3516 * xc**2 +
+            0.2843 * xc**3 -
+            0.1015 * xc**4
+        )
+        return yt * self.chord
+
+    def is_inside(self, x, y, pitch=1.0):
+        """Check if point (x,y) is inside the airfoil region (considering pitch periodicity)."""
+        y_shifted = torch.remainder(y + 0.5 * pitch, pitch) - 0.5 * pitch
+        x_valid = (x >= 0.0) & (x <= self.chord)
+        y_surface = self.surface(x)
+        inside = x_valid & (torch.abs(y_shifted) <= y_surface)
+        return inside
+
+
+class PINN(nn.Module):
+    """Physics-Informed Neural Network for incompressible Navier-Stokes in 2D
+    Using streamfunction psi and pressure p as network outputs: (psi, p)
+    u = dpsi/dy, v = -dpsi/dx
+    """
+    def __init__(self, layers, Re=200.0, x_min=-2.0, x_max=4.0, y_min=-0.5, y_max=0.5):
+        super().__init__()
+        self.Re = Re
+
+        # Input normalization buffers
+        self.register_buffer('x_mean', torch.tensor(0.5 * (x_min + x_max), dtype=torch.float32))
+        self.register_buffer('x_scale', torch.tensor(0.5 * (x_max - x_min), dtype=torch.float32))
+        self.register_buffer('y_mean', torch.tensor(0.5 * (y_min + y_max), dtype=torch.float32))
+        self.register_buffer('y_scale', torch.tensor(0.5 * (y_max - y_min), dtype=torch.float32))
+
+        # Build MLP - last layer produces 2 outputs: psi and p
+        modules = []
+        for i in range(len(layers) - 2):
+            modules.append(nn.Linear(layers[i], layers[i + 1]))
+            modules.append(nn.Tanh())
+        modules.append(nn.Linear(layers[-2], layers[-1]))
+        self.net = nn.Sequential(*modules)
+
+        # Xavier init for Linear layers
+        for m in self.net:
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                nn.init.zeros_(m.bias)
+
+    def forward(self, x, y):
+        """Network maps (x,y) -> (psi, p)"""
+        if x.dim() == 1:
+            x = x.unsqueeze(1)
+        if y.dim() == 1:
+            y = y.unsqueeze(1)
+
+        # Normalize
+        x_n = (x - self.x_mean) / (self.x_scale + 1e-12)
+        y_n = (y - self.y_mean) / (self.y_scale + 1e-12)
+        z = torch.cat([x_n, y_n], dim=1)
+        out = self.net(z)
+        psi = out[:, 0:1]
+        p = out[:, 1:2]
+        return psi, p
+
+    def _uv_from_psi(self, psi, x, y, create_graph=False, retain_graph=False):
+        """Compute velocities u, v from streamfunction psi using autograd.
+        u = dpsi/dy, v = -dpsi/dx
+        create_graph/retain_graph forwarded to torch.autograd.grad calls.
+        """
+        u = torch.autograd.grad(psi, y, torch.ones_like(psi), create_graph=create_graph, retain_graph=retain_graph)[0]
+        v = -torch.autograd.grad(psi, x, torch.ones_like(psi), create_graph=create_graph, retain_graph=retain_graph)[0]
+        return u, v
+
+    def physics_loss(self, x, y):
+        """Navier-Stokes residuals at collocation points (full autograd), using psi,p representation."""
+        x = x.clone().requires_grad_(True)
+        y = y.clone().requires_grad_(True)
+
+        psi, p = self.forward(x, y)
+
+        # compute u,v (these require gradients for later derivatives)
+        u, v = self._uv_from_psi(psi, x, y, create_graph=True, retain_graph=True)
+
+        # First derivatives
+        u_x = torch.autograd.grad(u, x, torch.ones_like(u), retain_graph=True, create_graph=True)[0]
+        u_y = torch.autograd.grad(u, y, torch.ones_like(u), retain_graph=True, create_graph=True)[0]
+        v_x = torch.autograd.grad(v, x, torch.ones_like(v), retain_graph=True, create_graph=True)[0]
+        v_y = torch.autograd.grad(v, y, torch.ones_like(v), retain_graph=True, create_graph=True)[0]
+        p_x = torch.autograd.grad(p, x, torch.ones_like(p), retain_graph=True, create_graph=True)[0]
+        p_y = torch.autograd.grad(p, y, torch.ones_like(p), retain_graph=True, create_graph=True)[0]
+
+        # Second derivatives (viscous terms)
+        u_xx = torch.autograd.grad(u_x, x, torch.ones_like(u_x), retain_graph=True, create_graph=True)[0]
+        u_yy = torch.autograd.grad(u_y, y, torch.ones_like(u_y), retain_graph=True, create_graph=True)[0]
+        v_xx = torch.autograd.grad(v_x, x, torch.ones_like(v_x), retain_graph=True, create_graph=True)[0]
+        v_yy = torch.autograd.grad(v_y, y, torch.ones_like(v_y), retain_graph=True, create_graph=True)[0]
+
+        # Residuals
+        momentum_x = u * u_x + v * u_y + p_x - (1.0 / self.Re) * (u_xx + u_yy)
+        momentum_y = u * v_x + v * v_y + p_y - (1.0 / self.Re) * (v_xx + v_yy)
+        continuity = u_x + v_y  # should be near zero analytically, but kept for monitoring
+
+        return momentum_x, momentum_y, continuity
+
+    def residuals_first_order(self, x, y, eps=1e-4):
+        """
+        Alias to the FD-based scorer. For safety we compute all quantities
+        with finite differences (no autograd) so candidate scoring never
+        touches the autograd graph used for training.
+        """
+        return self.residuals_first_order_fd(x, y, eps=eps)
+
+    def residuals_first_order_fd(self, x, y, eps=1e-4):
+        """
+        Finite-difference first-order residuals used for adaptive scoring.
+        Uses a 9-point central difference stencil (center, +/-x, +/-y, and 4 corners)
+        so we can approximate dpsi/dx, dpsi/dy and mixed/second derivatives without autograd.
+
+        Returns a CPU 1D tensor of per-point residual scores (detached).
+        """
+        if x.numel() == 0:
+            return torch.empty((0,), dtype=torch.float32)
+
+        # ensure column shape
+        if x.dim() == 1:
+            x = x.unsqueeze(1)
+        if y.dim() == 1:
+            y = y.unsqueeze(1)
+
+        eps = float(eps)
+
+        # build perturbed coordinates (device)
+        x = x.to(device)
+        y = y.to(device)
+        xp = x + eps
+        xm = x - eps
+        yp = y + eps
+        ym = y - eps
+
+        # Evaluate psi and p at the 9 stencil points with no_grad (vectorized)
+        # center
+        with torch.no_grad():
+            psi_c, p_c = self.forward(x, y)
+            # +/- x at center y
+            psi_xp, p_xp = self.forward(xp, y)
+            psi_xm, p_xm = self.forward(xm, y)
+            # +/- y at center x
+            psi_yp, p_yp = self.forward(x, yp)
+            psi_ym, p_ym = self.forward(x, ym)
+            # four corners
+            psi_xp_yp, p_xp_yp = self.forward(xp, yp)
+            psi_xp_ym, p_xp_ym = self.forward(xp, ym)
+            psi_xm_yp, p_xm_yp = self.forward(xm, yp)
+            psi_xm_ym, p_xm_ym = self.forward(xm, ym)
+
+        # central differences for first derivatives of psi
+        dpsi_dx = (psi_xp - psi_xm) / (2.0 * eps)  # dpsi/dx
+        dpsi_dy = (psi_yp - psi_ym) / (2.0 * eps)  # dpsi/dy
+
+        # second derivatives and mixed derivative
+        psi_xx = (psi_xp - 2.0 * psi_c + psi_xm) / (eps ** 2)
+        psi_yy = (psi_yp - 2.0 * psi_c + psi_ym) / (eps ** 2)
+        psi_xy = (psi_xp_yp - psi_xp_ym - psi_xm_yp + psi_xm_ym) / (4.0 * eps ** 2)
+
+        # velocities from psi
+        u = dpsi_dy  # u = dpsi/dy
+        v = -dpsi_dx  # v = -dpsi/dx
+
+        # derivatives of u,v (these are psi second derivatives / mixed derivatives)
+        u_x = psi_xy  # d/dx(dpsi/dy) = psi_xy
+        u_y = psi_yy  # d/dy(dpsi/dy) = psi_yy
+        v_x = -psi_xx  # d/dx(-dpsi/dx) = -psi_xx
+        v_y = -psi_xy  # d/dy(-dpsi/dx) = -psi_xy
+
+        # pressure gradients via central differences
+        p_x = (p_xp - p_xm) / (2.0 * eps)
+        p_y = (p_yp - p_ym) / (2.0 * eps)
+
+        # compute first-order momentum residuals (no viscous second-derivative terms — used only for ranking)
+        mx_fo = u * u_x + v * u_y + p_x
+        my_fo = u * v_x + v * v_y + p_y
+        cont = u_x + v_y
+
+        # per-point scalar residual (mean over any trailing dims)
+        r = (mx_fo ** 2 + my_fo ** 2 + cont ** 2)
+        r_per_point = r.view(r.shape[0], -1).mean(dim=1)  # shape (N,)
+        return r_per_point.detach().cpu()
+
+
+class CascadeFlowSolver:
+    """Main solver for cascade flow around NACA 0012 airfoils"""
+    def __init__(self, Re=200, chord=1.0, solidity=1.0,
+                 use_residual_adaptive=True, resample_every=200,
+                 pool_domain_size=40000, pool_boundary_size=8000,
+                 hybrid_fraction=0.5,
+                 n_cand_max=8000, cand_batch_size=512):
+        self.Re = Re
+        self.chord = chord
+        self.solidity = solidity
+        self.pitch = chord / max(solidity, 1e-8)
+
+        # Domain bounds
+        self.x_min, self.x_max = -2.0, 4.0
+        self.y_min = -0.5 * self.pitch
+        self.y_max = self.y_min + self.pitch
+
+        # Geometry
+        self.airfoil = NACA0012(chord=self.chord, t=0.12)
+
+        # Model - last layer now 2 outputs (psi,p)
+        # wider/deeper model for better capacity
+        layers = [2, 128, 128, 128, 128, 128, 2]  # 5 hidden layers × 128 neurons
+        self.model = PINN(layers, Re=self.Re,
+                          x_min=self.x_min, x_max=self.x_max,
+                          y_min=self.y_min, y_max=self.y_max).to(device)
+
+        # Optimizer and LR scheduler
+        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=5e-4, weight_decay=1e-6)
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=20000, eta_min=1e-6)
+
+        # History
+        self.loss_history = []
+
+        # Adaptive sampling params
+        self.use_residual_adaptive = use_residual_adaptive
+        self.resample_every = resample_every
+        self.pool_domain_size = pool_domain_size
+        self.pool_boundary_size = pool_boundary_size
+        self.hybrid_fraction = hybrid_fraction
+
+        # Candidate evaluation limits (to avoid OOM)
+        self.n_cand_max = n_cand_max
+        self.cand_batch_size = cand_batch_size
+
+        # --- Training weight schedules (for warm-up)
+        # Base (target) weights (what compute_losses used previously)
+        self.w_phys_base = 10.0
+        self.w_in_base = 10.0
+        self.w_out_base = 5.0
+        self.w_foil_base = 50.0
+        self.w_per_base = 5.0
+        self.w_gauge_base = 1e-2
+
+        # Current active weights (will be ramped in train())
+        self.w_phys = 1.0
+        self.w_in = 1.0
+        self.w_out = float(self.w_out_base)
+        self.w_foil = 1.0
+        self.w_per = float(self.w_per_base)
+        self.w_gauge = float(self.w_gauge_base)
+
+    def compute_diagnostics(self, nx=220, ny=140, fname='diagnostics.png'):
+        """
+        Robust diagnostics (no autograd graph reuse):
+        - momentum residual map (from model.physics_loss on a separate requires_grad tensors)
+        - continuity abs map
+        - vorticity (from finite-difference on velocities computed with FD)
+        - high-resolution Cp along the airfoil surface (evaluated slightly outside the surface)
+        Saves figure to `fname`.
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+        # build grid (numpy)
+        x = np.linspace(self.x_min, self.x_max, nx)
+        y = np.linspace(self.y_min, self.y_max, ny)
+        X, Y = np.meshgrid(x, y)
+
+        # --- 1) momentum residuals (use autograd path, on separate tensors)
+        xt_grad = torch.tensor(X.ravel(), dtype=torch.float32, device=device).unsqueeze(1).requires_grad_(True)
+        yt_grad = torch.tensor(Y.ravel(), dtype=torch.float32, device=device).unsqueeze(1).requires_grad_(True)
+
+        with torch.no_grad():
+            # optional: set model to eval() for stable behaviour (physics_loss still uses autograd internally)
+            self.model.eval()
+
+        # compute momentum residuals using model.physics_loss (it will create its own graph for grads)
+        mx, my, cont = self.model.physics_loss(xt_grad, yt_grad)
+        R = torch.sqrt(mx.detach() ** 2 + my.detach() ** 2).cpu().numpy().ravel().reshape(X.shape)
+        cont_map = torch.abs(cont.detach()).cpu().numpy().ravel().reshape(X.shape)
+
+        # free grad tensors
+        del xt_grad, yt_grad
+        torch.cuda.empty_cache()
+
+        # --- 2) velocities via finite differences (no autograd) for vorticity plotting
+        eps = 1e-4
+        xt_fd = torch.tensor(X.ravel(), dtype=torch.float32, device=device).unsqueeze(1)
+        yt_fd = torch.tensor(Y.ravel(), dtype=torch.float32, device=device).unsqueeze(1)
+        xp = xt_fd + eps
+        xm = xt_fd - eps
+        yp = yt_fd + eps
+        ym = yt_fd - eps
+
+        with torch.no_grad():
+            psi_c, _ = self.model(xt_fd, yt_fd)
+            psi_xp, _ = self.model(xp, yt_fd)
+            psi_xm, _ = self.model(xm, yt_fd)
+            psi_yp, _ = self.model(xt_fd, yp)
+            psi_ym, _ = self.model(xt_fd, ym)
+
+        dpsi_dx = (psi_xp - psi_xm) / (2.0 * eps)
+        dpsi_dy = (psi_yp - psi_ym) / (2.0 * eps)
+
+        u = dpsi_dy.detach().cpu().numpy().ravel().reshape(X.shape)  # u = dpsi/dy
+        v = (-dpsi_dx).detach().cpu().numpy().ravel().reshape(X.shape)  # v = -dpsi/dx
+
+        # --- 3) vorticity via finite differences (numpy)
+        dvdx = np.gradient(v, x, axis=1)
+        dudy = np.gradient(u, y, axis=0)
+        omega = dvdx - dudy
+
+        # --- 4) mask airfoil interior
+        inside = self.airfoil.is_inside(torch.tensor(X, dtype=torch.float32),
+                                        torch.tensor(Y, dtype=torch.float32),
+                                        pitch=self.pitch).cpu().numpy()
+        R[inside] = np.nan
+        cont_map[inside] = np.nan
+        omega[inside] = np.nan
+
+        # --- 5) high-res Cp along surface (evaluate slightly outside the surface)
+        theta = np.linspace(0, 2 * np.pi, 500)
+        x_surf = 0.5 * (1.0 + np.cos(theta)) * self.chord
+        y_surf = self.airfoil.surface(torch.tensor(x_surf, dtype=torch.float32)).cpu().numpy()
+
+        # small outward offset so FD stencils remain in fluid
+        delta = 1e-3
+        x_up = x_surf
+        y_up = y_surf + delta
+        x_lo = x_surf
+        y_lo = -y_surf - delta
+
+        _, _, p_up = self.predict(x_up, y_up)
+        _, _, p_lo = self.predict(x_lo, y_lo)
+        p_inf = self.estimate_p_inlet_mean(n=1024)
+        q_inf = 0.5 * 1.0 ** 2
+        cp_up = (p_up - p_inf) / q_inf
+        cp_lo = (p_lo - p_inf) / q_inf
+
+        # --- plotting
+        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        im0 = axes[0, 0].contourf(X, Y, np.log10(R + 1e-16), levels=50, cmap='viridis')
+        axes[0, 0].set_title('log10(|momentum residual|)')
+        plt.colorbar(im0, ax=axes[0, 0])
+
+        im1 = axes[0, 1].contourf(X, Y, cont_map, levels=50, cmap='magma')
+        axes[0, 1].set_title('|continuity|')
+        plt.colorbar(im1, ax=axes[0, 1])
+
+        im2 = axes[1, 0].contourf(X, Y, omega, levels=60, cmap='bwr')
+        axes[1, 0].set_title('vorticity ω')
+        plt.colorbar(im2, ax=axes[1, 0])
+
+        axes[1, 1].plot(x_surf / self.chord, -cp_up, label='-Cp upper', linewidth=2)
+        axes[1, 1].plot(x_surf / self.chord, -cp_lo, label='-Cp lower', linestyle='--', linewidth=2)
+        axes[1, 1].set_title('Cp distribution (high-res)')
+        axes[1, 1].set_xlim(0.0, 1.0)
+        axes[1, 1].legend()
+        axes[1, 1].grid(True, alpha=0.3)
+
+        for ax in axes.ravel():
+            ax.set_xlim(self.x_min, self.x_max)
+            ax.set_ylim(self.y_min, self.y_max)
+
+        plt.tight_layout()
+        fig.savefig(fname, dpi=150, bbox_inches='tight')
+        print(f"Saved diagnostics to {fname}")
+        plt.show()
+        plt.close(fig)
+
+    def generate_collocation_points(self, n_domain=None, n_boundary=None, seed=42):
+        if n_domain is None:
+            n_domain = self.pool_domain_size
+        if n_boundary is None:
+            n_boundary = self.pool_boundary_size
+
+        # Domain candidates (draw slightly more and filter inside)
+        x_candidates, y_candidates = sobol_points(int(n_domain * 1.3), self.x_min, self.x_max, self.y_min, self.y_max, device, seed=seed)
+        inside_mask = self.airfoil.is_inside(x_candidates, y_candidates, pitch=self.pitch)
+        x_dom = x_candidates[~inside_mask][:n_domain]
+        y_dom = y_candidates[~inside_mask][:n_domain]
+
+        # Inlet
+        n_inlet = max(4, n_boundary // 4)
+        x_inlet = torch.full((n_inlet, 1), self.x_min, device=device)
+        y_inlet = self.y_min + (self.y_max - self.y_min) * torch.rand(n_inlet, 1, device=device)
+
+        # Outlet
+        n_outlet = max(4, n_boundary // 4)
+        x_outlet = torch.full((n_outlet, 1), self.x_max, device=device)
+        y_outlet = self.y_min + (self.y_max - self.y_min) * torch.rand(n_outlet, 1, device=device)
+
+        # Airfoil surface
+        n_airfoil = max(400, n_boundary * 2)  # e.g. 400+ surface points
+        s = torch.linspace(0.0, np.pi, n_airfoil // 2 + 1, device=device)
+        x_nodes = 0.5 * (1.0 - torch.cos(s)) * self.chord
+        y_surf = self.airfoil.surface(x_nodes)
+        x_up = torch.flip(x_nodes, dims=[0])
+        y_up = y_surf.flip(0)
+        x_lo = x_nodes[1:]
+        y_lo = -y_surf[1:]
+        x_airfoil = torch.cat([x_up, x_lo]).unsqueeze(1)
+        y_airfoil = torch.cat([y_up, y_lo]).unsqueeze(1)
+        # build a small set of near-wall sample points slightly off the surface (outward normals)
+        delta_off = 2e-3  # small outward offset
+        # compute approximate normals (normal points outward in y for symmetric foil; for safety we offset in y)
+        x_off_up = x_up
+        y_off_up = y_up + delta_off
+        x_off_lo = x_lo
+        y_off_lo = y_lo - delta_off
+        x_off = torch.cat([x_off_up, x_off_lo]).unsqueeze(1)
+        y_off = torch.cat([y_off_up, y_off_lo]).unsqueeze(1)
+
+        # extend the airfoil contact pool to include off-surface points (so BCs see both)
+        x_airfoil_full = torch.cat([x_airfoil, x_off], dim=0)
+        y_airfoil_full = torch.cat([y_airfoil, y_off], dim=0)
+
+
+        return {
+            'domain': (x_dom, y_dom),
+            'inlet': (x_inlet, y_inlet),
+            'outlet': (x_outlet, y_outlet),
+            'airfoil': (x_airfoil_full, y_airfoil_full),
+        }
+
+    def compute_losses(self, points):
+        x_dom, y_dom = points['domain']
+        # Physics residuals (autograd)
+        mx, my, cont = self.model.physics_loss(x_dom, y_dom)
+        physics_loss = torch.mean(mx ** 2 + my ** 2 + cont ** 2)
+
+        # --- Inlet: enforce streamfunction Dirichlet psi = Uinf * y (strong physical BC)
+        Uinf = 1.0
+        x_in, y_in = points['inlet']
+        x_in = x_in.clone().requires_grad_(True)
+        y_in = y_in.clone().requires_grad_(True)
+        psi_in, p_in = self.model(x_in, y_in)
+        # Streamfunction of uniform flow psi = U * y
+        psi_in_target = Uinf * y_in
+        inlet_loss = torch.mean((psi_in - psi_in_target) ** 2)
+
+        # --- Outlet: keep zero-gradient for u,v,p (as before)
+        x_out, y_out = points['outlet']
+        x_out = x_out.clone().requires_grad_(True)
+        y_out = y_out.clone().requires_grad_(True)
+        psi_out, p_out = self.model(x_out, y_out)
+        u_out = torch.autograd.grad(psi_out, y_out, torch.ones_like(psi_out), retain_graph=True, create_graph=True)[0]
+        v_out = -torch.autograd.grad(psi_out, x_out, torch.ones_like(psi_out), retain_graph=True, create_graph=True)[0]
+        u_x = torch.autograd.grad(u_out, x_out, torch.ones_like(u_out), retain_graph=True, create_graph=True)[0]
+        v_x = torch.autograd.grad(v_out, x_out, torch.ones_like(v_out), retain_graph=True, create_graph=True)[0]
+        p_x = torch.autograd.grad(p_out, x_out, torch.ones_like(p_out), retain_graph=True, create_graph=True)[0]
+        outlet_loss = torch.mean(u_x ** 2 + v_x ** 2 + p_x ** 2)
+
+        # --- Airfoil: enforce psi = const (impermeability) + keep u=v≈0 (no-slip)
+        x_air, y_air = points['airfoil']
+        x_air = x_air.clone().requires_grad_(True)
+        y_air = y_air.clone().requires_grad_(True)
+        psi_air, p_air = self.model(x_air, y_air)
+        # Strong impermeability via psi const (choose 0.0 as reference)
+        psi_air_loss = torch.mean((psi_air - 0.0) ** 2)
+
+        # Keep the u,v no-slip penalty (useful in streamfunction formulation)
+        u_air = torch.autograd.grad(psi_air, y_air, torch.ones_like(psi_air), retain_graph=True, create_graph=True)[0]
+        v_air = -torch.autograd.grad(psi_air, x_air, torch.ones_like(psi_air), retain_graph=True, create_graph=True)[0]
+        # Tangential/no-slip combined penalty (this is usually noisy; psi const helps stabilize)
+        no_slip_loss = torch.mean(u_air ** 2 + v_air ** 2)
+        airfoil_loss = psi_air_loss + 1.0 * no_slip_loss  # keep psi term dominant
+
+        # --- Periodic BC (modified: enforce velocities and small psi continuity, NOT p)
+        n_per = 256
+        x_per = torch.rand(n_per, 1, device=device) * (self.x_max - self.x_min) + self.x_min
+        x_per = x_per.clone().requires_grad_(True)
+        y_bot = torch.full_like(x_per, self.y_min).clone().requires_grad_(True)
+        y_top = torch.full_like(x_per, self.y_min + self.pitch).clone().requires_grad_(True)
+
+        psi_top, p_top = self.model(x_per, y_top)
+        psi_bot, p_bot = self.model(x_per, y_bot)
+
+        # velocities from psi
+        u_top = torch.autograd.grad(psi_top, y_top, torch.ones_like(psi_top), retain_graph=True, create_graph=True)[0]
+        v_top = -torch.autograd.grad(psi_top, x_per, torch.ones_like(psi_top), retain_graph=True, create_graph=True)[0]
+        u_bot = torch.autograd.grad(psi_bot, y_bot, torch.ones_like(psi_bot), retain_graph=True, create_graph=True)[0]
+        v_bot = -torch.autograd.grad(psi_bot, x_per, torch.ones_like(psi_bot), retain_graph=True, create_graph=True)[0]
+
+        # prefer velocities + small psi continuity (psi difference is often gauge-like; keep small weight)
+        periodic_vel_loss = torch.mean((u_top - u_bot) ** 2 + (v_top - v_bot) ** 2)
+        periodic_psi_loss = torch.mean((psi_top - psi_bot) ** 2) * 0.01  # tiny weight for psi offset consistency
+        periodic_loss = periodic_vel_loss + periodic_psi_loss
+
+        # --- Pressure gauge: small penalty on mean inlet pressure to fix gauge
+        p_in_mean = torch.mean(p_in)
+        gauge_loss = p_in_mean ** 2
+
+        # --- Use current (possibly warmed-up) weights stored on self
+        total_loss = (self.w_phys * physics_loss +
+                      self.w_in * inlet_loss +
+                      self.w_out * outlet_loss +
+                      self.w_foil * airfoil_loss +
+                      self.w_per * periodic_loss +
+                      self.w_gauge * gauge_loss)
+
+        return total_loss, {
+            'physics': physics_loss.item(),
+            'inlet': inlet_loss.item(),
+            'outlet': outlet_loss.item(),
+            'airfoil': airfoil_loss.item(),
+            'periodic': periodic_loss.item(),
+            'gauge': gauge_loss.item(),
+            'total': total_loss.item()
+        }
+
+    def train(self, epochs=5000, print_every=200, batch_dom=4096, batch_bnd=1024):
+        """Mini-batch training with hybrid residual-adaptive sampling (chunked eval).
+        Warmup for weights + selective & thinned residual-adaptive sampling.
+        """
+        print("Starting training...")
+        start_time = time.time()
+
+        pool = self.generate_collocation_points(n_domain=self.pool_domain_size, n_boundary=self.pool_boundary_size)
+
+        def sample_batch(x, y, n):
+            if x.shape[0] == 0:
+                return x, y
+            idx = torch.randint(0, x.shape[0], (n,), device=device)
+            return x[idx], y[idx]
+
+        # warmup config
+        warmup_epochs = 2000  # linearly ramp weights over this many epochs
+        for epoch in range(epochs):
+            self.optimizer.zero_grad()
+
+            # warm-up schedule for weights (linear)
+            alpha = min(1.0, (epoch + 1) / warmup_epochs)
+            self.w_phys = 1.0 + (self.w_phys_base - 1.0) * alpha
+            self.w_in = 1.0 + (self.w_in_base - 1.0) * alpha
+            self.w_foil = 1.0 + (self.w_foil_base - 1.0) * alpha
+            # keep others at base
+            self.w_out = float(self.w_out_base)
+            self.w_per = float(self.w_per_base)
+            self.w_gauge = float(self.w_gauge_base)
+
+            # Sample mini-batches
+            x_dom_b, y_dom_b = sample_batch(*pool['domain'], batch_dom)
+            x_in_b, y_in_b = sample_batch(*pool['inlet'], max(4, batch_bnd // 2))
+            x_out_b, y_out_b = sample_batch(*pool['outlet'], max(4, batch_bnd // 2))
+            x_air_b, y_air_b = sample_batch(*pool['airfoil'], batch_bnd)
+
+            batch = {
+                'domain': (x_dom_b, y_dom_b),
+                'inlet': (x_in_b, y_in_b),
+                'outlet': (x_out_b, y_out_b),
+                'airfoil': (x_air_b, y_air_b),
+            }
+
+            total_loss, loss_dict = self.compute_losses(batch)
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            self.optimizer.step()
+            self.scheduler.step()
+
+            self.loss_history.append(loss_dict)
+
+            if (epoch + 1) % print_every == 0:
+                elapsed = time.time() - start_time
+                current_lr = self.optimizer.param_groups[0]['lr']
+                print(f"Epoch {epoch + 1}/{epochs}, Time: {elapsed:.1f}s, LR: {current_lr:.2e}")
+                print(f"  Total: {loss_dict['total']:.6f} | Phys: {loss_dict['physics']:.6f} | "
+                      f"Inlet: {loss_dict['inlet']:.6f} | Outlet: {loss_dict['outlet']:.6f} | "
+                      f"Foil: {loss_dict['airfoil']:.6f} | Periodic: {loss_dict['periodic']:.6f}")
+                # -------- quick near-wall residual diagnostic (light-weight)
+                # sample a modest number of near-wall points (filtered to fluid region)
+                with torch.no_grad():
+                    x_dbg_all, y_dbg_all = sobol_points(1024, -0.2, 1.5, -0.12 * self.pitch, 0.12 * self.pitch, device, seed=epoch)
+                    mask_dbg = ~self.airfoil.is_inside(x_dbg_all, y_dbg_all, pitch=self.pitch)
+                    x_dbg = x_dbg_all[mask_dbg][:512]
+                    y_dbg = y_dbg_all[mask_dbg][:512]
+
+                if x_dbg.shape[0] > 0:
+                    # use FD scorer on CPU (function returns a CPU tensor)
+                    try:
+                        r_dbg = self.model.residuals_first_order_fd(x_dbg, y_dbg, eps=1e-3)
+                        r_mean = float(r_dbg.mean())
+                        r_max = float(r_dbg.max())
+                        print(f"    [dbg] near-wall residuals (N={r_dbg.numel()}): mean={r_mean:.3e}, max={r_max:.3e}")
+                    except Exception as e:
+                        print(f"    [dbg] residual diagnostic failed: {e}")
+
+
+            # Residual-adaptive refresh (hybrid) - selective and thinned
+            if self.use_residual_adaptive and ((epoch + 1) % self.resample_every == 0):
+                # pick candidate size clipped to safe maximum
+                n_cand = min(max(4000, int(self.pool_domain_size * 0.6)), self.n_cand_max)
+                print(f"  [resample] epoch {epoch + 1}: evaluating up to {n_cand} candidate points in batches of {self.cand_batch_size}")
+
+                # draw candidates (draw slightly more to allow filtering)
+                x_cand_all, y_cand_all = sobol_points(int(n_cand * 1.2), self.x_min, self.x_max, self.y_min, self.y_max, device, seed=epoch + 1000)
+                mask_all = ~self.airfoil.is_inside(x_cand_all, y_cand_all, pitch=self.pitch)
+                x_cand_all, y_cand_all = x_cand_all[mask_all], y_cand_all[mask_all]
+
+                # near-wall concentrated candidates
+                n_near = int(0.40 * n_cand)  # 40% -> heavier near-wall sampling
+                x_near, y_near = sobol_points(n_near, -0.2, 1.5, -0.12 * self.pitch, 0.12 * self.pitch, device, seed=epoch + 5000)
+                mask_near = ~self.airfoil.is_inside(x_near, y_near, pitch=self.pitch)
+                x_near, y_near = x_near[mask_near], y_near[mask_near]
+                if x_near.shape[0] < n_near and x_cand_all.shape[0] > 0:
+                    pad_idx = torch.randint(0, x_cand_all.shape[0], (n_near - x_near.shape[0],), device=device)
+                    x_near = torch.cat([x_near, x_cand_all[pad_idx]], dim=0)[:n_near]
+                    y_near = torch.cat([y_near, y_cand_all[pad_idx]], dim=0)[:n_near]
+
+                x_cand_all = torch.cat([x_cand_all, x_near], dim=0)
+                y_cand_all = torch.cat([y_cand_all, y_near], dim=0)
+
+                # pad if fewer than needed
+                if x_cand_all.shape[0] < n_cand:
+                    needed = n_cand - x_cand_all.shape[0]
+                    extra_x, extra_y = sobol_points(int(needed * 1.2), self.x_min, self.x_max, self.y_min, self.y_max, device, seed=epoch + 2000)
+                    extra_mask = ~self.airfoil.is_inside(extra_x, extra_y, pitch=self.pitch)
+                    extra_x, extra_y = extra_x[extra_mask], extra_y[extra_mask]
+                    if extra_x.shape[0] > 0:
+                        cat_x = torch.cat([x_cand_all, extra_x], dim=0)
+                        cat_y = torch.cat([y_cand_all, extra_y], dim=0)
+                        x_cand_all = cat_x[:n_cand]
+                        y_cand_all = cat_y[:n_cand]
+                else:
+                    x_cand_all = x_cand_all[:n_cand]
+                    y_cand_all = y_cand_all[:n_cand]
+
+                num_cand = x_cand_all.shape[0]
+                print(f"    candidates after filtering: {num_cand}")
+
+                if num_cand == 0:
+                    print("    No candidate points available after filtering; skipping resample.")
+                    continue
+
+                # Evaluate per-point residuals in chunks to avoid OOM
+                residuals_list = []
+                bsize = max(64, min(self.cand_batch_size, num_cand))
+
+                for i in range(0, num_cand, bsize):
+                    j = min(i + bsize, num_cand)
+                    x_batch = x_cand_all[i:j].to(device).clone()
+                    y_batch = y_cand_all[i:j].to(device).clone()
+                    try:
+                        # slightly larger eps for FD scoring to reduce sensitivity
+                        r_batch = self.model.residuals_first_order_fd(x_batch, y_batch, eps=1e-3)
+                        residuals_list.append(r_batch)
+                    except RuntimeError as e:
+                        # retry smaller subchunks
+                        print(f"    Warning: error evaluating chunk {i}:{j} -> {e}. Retrying smaller subchunks.")
+                        torch.cuda.empty_cache()
+                        small_b = max(64, bsize // 2)
+                        for ii in range(i, j, small_b):
+                            jj = min(ii + small_b, j)
+                            xb = x_cand_all[ii:jj].to(device).clone()
+                            yb = y_cand_all[ii:jj].to(device).clone()
+                            r_small = self.model.residuals_first_order_fd(xb, yb, eps=1e-3)
+                            residuals_list.append(r_small)
+                            del xb, yb
+                        torch.cuda.empty_cache()
+                    finally:
+                        del x_batch, y_batch
+                        torch.cuda.empty_cache()
+
+                if len(residuals_list) == 0:
+                    print("    Warning: no residuals computed; skipping resample.")
+                    continue
+
+                r_all = torch.cat(residuals_list, dim=0).flatten()  # CPU tensor
+                num_res = int(r_all.numel())
+                print(f"    residuals computed: {num_res} (expected {num_cand})")
+
+                # ensure r_all length matches candidate count
+                if num_res > num_cand:
+                    r_all = r_all[:num_cand]
+                    num_res = num_cand
+                elif num_res < num_cand:
+                    pad_len = num_cand - num_res
+                    r_all = torch.cat([r_all, torch.zeros(pad_len, dtype=r_all.dtype)], dim=0)
+                    num_res = num_cand
+
+                # --- Selective top-k (don't take all candidates)
+                k_top_desired = int(self.hybrid_fraction * self.pool_domain_size)
+                k_top_desired = max(100, min(k_top_desired, num_cand))
+                topk_vals, topk_idx_cpu = torch.topk(r_all, k=k_top_desired)
+                topk_idx = topk_idx_cpu.to(device=device, dtype=torch.long)
+                x_top = x_cand_all[topk_idx]
+                y_top = y_cand_all[topk_idx]
+                print(f"    selected top {x_top.shape[0]} residual points (pre-thinning)")
+
+                # --- Thin the top set to improve spatial diversity (keep a larger subset)
+                # keep a larger subset of top residuals (improves physics focus but keeps diversity)
+                # k_select: at least 800 points or up to 50% of the x_top set (whichever is smaller)
+                k_select = min(x_top.shape[0], max(800, int(0.5 * x_top.shape[0])))
+                if x_top.shape[0] > k_select:
+                    # pick evenly spaced indices across the top set to preserve spatial coverage
+                    idx_sub = torch.linspace(0, x_top.shape[0] - 1, steps=k_select, device=device).long()
+                    x_top = x_top[idx_sub]
+                    y_top = y_top[idx_sub]
+
+                print(f"    after thinning, top-residual points: {x_top.shape[0]}")
+
+                # fill remaining with uniform Sobol
+                n_uniform = self.pool_domain_size - x_top.shape[0]
+                if n_uniform > 0:
+                    x_unif, y_unif = sobol_points(n_uniform * 2, self.x_min, self.x_max, self.y_min, self.y_max, device, seed=epoch + 3000)
+                    mask_unif = ~self.airfoil.is_inside(x_unif, y_unif, pitch=self.pitch)
+                    x_unif, y_unif = x_unif[mask_unif][:n_uniform], y_unif[mask_unif][:n_uniform]
+                    if x_unif.shape[0] < n_uniform:
+                        extra_needed = n_uniform - x_unif.shape[0]
+                        pad_idx = torch.randint(0, x_cand_all.shape[0], (extra_needed,), device=device)
+                        x_pad = x_cand_all[pad_idx]
+                        y_pad = y_cand_all[pad_idx]
+                        x_unif = torch.cat([x_unif, x_pad], dim=0)[:n_uniform]
+                        y_unif = torch.cat([y_unif, y_pad], dim=0)[:n_uniform]
+                else:
+                    x_unif = torch.empty((0, 1), device=device)
+                    y_unif = torch.empty((0, 1), device=device)
+
+                # new domain pool (concatenate residual-first then uniform)
+                x_new = torch.cat([x_top, x_unif], dim=0)[:self.pool_domain_size]
+                y_new = torch.cat([y_top, y_unif], dim=0)[:self.pool_domain_size]
+                pool['domain'] = (x_new, y_new)
+                print(f"    [resample done] top-residual pts: {x_top.shape[0]}, uniform pts: {x_unif.shape[0]}")
+
+        print(f"\nTraining completed in {time.time() - start_time:.1f} seconds")
+
+    def predict(self, x, y, eps=1e-4):
+        """
+        Predict (u, v, p) at numpy arrays or lists x,y.
+        Uses finite-difference (central) evaluation of psi to compute velocities
+        so we do NOT rely on autograd or any existing computation graph.
+        Returns numpy arrays shaped like the input (x).
+        """
+        # prepare arrays
+        x_arr = np.array(x).reshape(-1)
+        y_arr = np.array(y).reshape(-1)
+
+        # build column tensors on device
+        x_t = torch.tensor(x_arr, dtype=torch.float32, device=device).reshape(-1, 1)
+        y_t = torch.tensor(y_arr, dtype=torch.float32, device=device).reshape(-1, 1)
+
+        # finite-difference points
+        eps = float(eps)
+        # If any stencil sample would fall inside the foil, raise eps to a safer value
+        xp_test = x_t + eps
+        xm_test = x_t - eps
+        yp_test = y_t + eps
+        ym_test = y_t - eps
+        try:
+            any_inside = False
+            with torch.no_grad():
+                inside_xp = self.airfoil.is_inside(xp_test, y_t, pitch=self.pitch)
+                inside_xm = self.airfoil.is_inside(xm_test, y_t, pitch=self.pitch)
+                inside_yp = self.airfoil.is_inside(x_t, yp_test, pitch=self.pitch)
+                inside_ym = self.airfoil.is_inside(x_t, ym_test, pitch=self.pitch)
+                if torch.any(inside_xp) or torch.any(inside_xm) or torch.any(inside_yp) or torch.any(inside_ym):
+                    any_inside = True
+        except Exception:
+            any_inside = True
+
+        if any_inside:
+            # use a more robust stencil step so stencil points are farther away from the surface
+            eps = max(eps, 1e-3)
+
+        xp = x_t + eps
+        xm = x_t - eps
+        yp = y_t + eps
+        ym = y_t - eps
+
+        # Evaluate psi and p at stencil points without grad (no graph)
+        self.model.eval()
+        with torch.no_grad():
+            psi_c, p_c = self.model(x_t, y_t)
+            psi_xp, p_xp = self.model(xp, y_t)
+            psi_xm, p_xm = self.model(xm, y_t)
+            psi_yp, p_yp = self.model(x_t, yp)
+            psi_ym, p_ym = self.model(x_t, ym)
+
+        # central differences
+        dpsi_dx = (psi_xp - psi_xm) / (2.0 * eps)  # dpsi/dx
+        dpsi_dy = (psi_yp - psi_ym) / (2.0 * eps)  # dpsi/dy
+
+        u = dpsi_dy  # u = dpsi/dy
+        v = -dpsi_dx  # v = -dpsi/dx
+        p = p_c
+
+        # move to CPU numpy and reshape to input shape
+        u_np = u.detach().cpu().numpy().reshape(x_arr.shape)
+        v_np = v.detach().cpu().numpy().reshape(x_arr.shape)
+        p_np = p.detach().cpu().numpy().reshape(x_arr.shape)
+
+        return u_np.reshape(np.shape(x)), v_np.reshape(np.shape(x)), p_np.reshape(np.shape(x))
+
+    def estimate_p_inlet_mean(self, n=512):
+        x = np.full((n, 1), self.x_min, dtype=np.float32)
+        y = np.linspace(self.y_min, self.y_max, n, dtype=np.float32).reshape(-1, 1)
+        _, _, p = self.predict(x, y)
+        return float(np.mean(p))
+
+    def compute_pressure_coefficient(self, n_points=200):
+        theta = np.linspace(0, 2 * np.pi, n_points)
+        x_surf = 0.5 * (1 + np.cos(theta)) * self.chord
+        y_surf = self.airfoil.surface(torch.tensor(x_surf, dtype=torch.float32)).cpu().numpy()
+        # evaluate slightly outside
+        delta = 1e-3
+        _, _, p_upper = self.predict(x_surf, y_surf + delta)
+        _, _, p_lower = self.predict(x_surf, -y_surf - delta)
+        p_inf = self.estimate_p_inlet_mean(n=512)
+        u_inf = 1.0
+        q_inf = 0.5 * u_inf**2
+        cp_upper = (p_upper - p_inf) / q_inf
+        cp_lower = (p_lower - p_inf) / q_inf
+        return x_surf / self.chord, cp_upper, cp_lower
+
+    def compute_force_coefficients(self, n_points=800):
+        s = torch.linspace(0.0, np.pi, n_points // 2 + 1, device=device)
+        x_nodes = 0.5 * (1.0 - torch.cos(s)) * self.chord
+        x_up = torch.flip(x_nodes, dims=[0])
+        y_up = self.airfoil.surface(x_up)
+        x_lo = x_nodes[1:]
+        y_lo = -self.airfoil.surface(x_lo)
+        xs = torch.cat([x_up, x_lo]).unsqueeze(1).to(device)
+        ys = torch.cat([y_up, y_lo]).unsqueeze(1).to(device)
+        xs.requires_grad_(True);
+        ys.requires_grad_(True)
+
+        psi_c, p_c = self.model(xs, ys)
+        u, v = self.model._uv_from_psi(psi_c, xs, ys, create_graph=True, retain_graph=True)
+
+        u_x = torch.autograd.grad(u, xs, torch.ones_like(u), create_graph=True, retain_graph=True)[0]
+        u_y = torch.autograd.grad(u, ys, torch.ones_like(u), create_graph=True, retain_graph=True)[0]
+        v_x = torch.autograd.grad(v, xs, torch.ones_like(v), create_graph=True, retain_graph=True)[0]
+        v_y = torch.autograd.grad(v, ys, torch.ones_like(v), create_graph=True, retain_graph=True)[0]
+
+        mu = 1.0 / self.Re
+        sig_xx = -p_c + 2.0 * mu * u_x
+        sig_xy = mu * (u_y + v_x)
+        sig_yy = -p_c + 2.0 * mu * v_y
+
+        xs_np = xs.detach().cpu().numpy().ravel()
+        ys_np = ys.detach().cpu().numpy().ravel()
+        sig_xx_np = sig_xx.detach().cpu().numpy().ravel()
+        sig_xy_np = sig_xy.detach().cpu().numpy().ravel()
+        sig_yy_np = sig_yy.detach().cpu().numpy().ravel()
+
+        # compute s_coord and tangents robustly on CPU
+        ds = np.sqrt(np.diff(xs_np) ** 2 + np.diff(ys_np) ** 2)
+        s_coord = np.concatenate(([0.0], np.cumsum(ds)))
+        tx = np.gradient(xs_np, s_coord)
+        ty = np.gradient(ys_np, s_coord)
+        nx = ty
+        ny = -tx
+
+        t_x = sig_xx_np * nx + sig_xy_np * ny
+        t_y = sig_xy_np * nx + sig_yy_np * ny
+
+        Fx = np.trapz(t_x, s_coord)
+        Fy = np.trapz(t_y, s_coord)
+        U_inf = 1.0
+        q_inf = 0.5 * U_inf ** 2
+        cd = Fx / (q_inf * self.chord)
+        cl = Fy / (q_inf * self.chord)
+        return cl, cd
+
+    def extract_wake_profile(self, x_wake=2.0, n_points=200):
+        y_wake = np.linspace(self.y_min, self.y_max, n_points)
+        x_wake_arr = np.full_like(y_wake, x_wake)
+        u_wake, v_wake, _ = self.predict(x_wake_arr, y_wake)
+        return y_wake, u_wake, v_wake
+
+    def visualize_results(self, save_figs=True):
+        print("\nGenerating visualizations...")
+
+        nx, ny = 200, 120
+        x = np.linspace(self.x_min, self.x_max, nx)
+        y = np.linspace(self.y_min, self.y_max, ny)
+        X, Y = np.meshgrid(x, y)
+        u, v, p = self.predict(X, Y)
+        speed = np.sqrt(u**2 + v**2)
+
+        inside = self.airfoil.is_inside(torch.tensor(X, dtype=torch.float32),
+                                        torch.tensor(Y, dtype=torch.float32),
+                                        pitch=self.pitch).cpu().numpy()
+        u[inside] = np.nan
+        v[inside] = np.nan
+        p[inside] = np.nan
+        speed[inside] = np.nan
+
+        theta = np.linspace(0, 2 * np.pi, 400)
+        x_foil = 0.5 * (1 + np.cos(theta)) * self.chord
+        y_foil = self.airfoil.surface(torch.tensor(x_foil, dtype=torch.float32)).cpu().numpy()
+
+        fig = plt.figure(figsize=(16, 12))
+
+        ax1 = plt.subplot(3, 2, 1)
+        try:
+            strm = ax1.streamplot(X, Y, u, v, color=speed, cmap='viridis', density=2, linewidth=1, arrowsize=1)
+            plt.colorbar(strm.lines, ax=ax1, label='Velocity magnitude')
+        except Exception:
+            cs = ax1.contourf(X, Y, speed, levels=30, cmap='viridis')
+            plt.colorbar(cs, ax=ax1, label='Velocity magnitude')
+        ax1.fill(x_foil, y_foil, 'k', alpha=0.8)
+        ax1.fill(x_foil, -y_foil, 'k', alpha=0.8)
+        ax1.set_xlim(self.x_min, self.x_max)
+        ax1.set_ylim(self.y_min, self.y_max)
+        ax1.set_xlabel('x/c')
+        ax1.set_ylabel('y/c')
+        ax1.set_title('Streamlines')
+        ax1.set_aspect('equal')
+
+        ax2 = plt.subplot(3, 2, 2)
+        levels = np.linspace(np.nanmin(p), np.nanmax(p), 30)
+        cp = ax2.contourf(X, Y, p, levels=levels, cmap='RdBu_r', extend='both')
+        plt.colorbar(cp, ax=ax2, label='Pressure')
+        ax2.fill(x_foil, y_foil, 'k', alpha=0.8)
+        ax2.fill(x_foil, -y_foil, 'k', alpha=0.8)
+        ax2.set_xlim(self.x_min, self.x_max)
+        ax2.set_ylim(self.y_min, self.y_max)
+        ax2.set_xlabel('x/c')
+        ax2.set_ylabel('y/c')
+        ax2.set_title('Pressure Field')
+        ax2.set_aspect('equal')
+
+        ax3 = plt.subplot(3, 2, 3)
+        levels = np.linspace(np.nanmin(speed), np.nanmax(speed), 30)
+        cv = ax3.contourf(X, Y, speed, levels=levels, cmap='jet')
+        plt.colorbar(cv, ax=ax3, label='|V|/U∞')
+        ax3.fill(x_foil, y_foil, 'k', alpha=0.8)
+        ax3.fill(x_foil, -y_foil, 'k', alpha=0.8)
+        ax3.set_xlim(self.x_min, self.x_max)
+        ax3.set_ylim(self.y_min, self.y_max)
+        ax3.set_xlabel('x/c')
+        ax3.set_ylabel('y/c')
+        ax3.set_title('Velocity Magnitude')
+        ax3.set_aspect('equal')
+
+        ax4 = plt.subplot(3, 2, 4)
+        x_cp, cp_upper, cp_lower = self.compute_pressure_coefficient()
+        ax4.plot(x_cp, -cp_upper, 'b-', label='Upper surface', linewidth=2)
+        ax4.plot(x_cp, -cp_lower, 'r--', label='Lower surface', linewidth=2)
+        ax4.set_xlabel('x/c')
+        ax4.set_ylabel('-Cp')
+        ax4.set_title('Pressure Coefficient Distribution')
+        ax4.grid(True, alpha=0.3)
+        ax4.legend()
+        ax4.set_xlim(0, 1)
+
+        ax5 = plt.subplot(3, 2, 5)
+        for x_wake in [1.5, 2.0, 3.0]:
+            y_wake, u_wake, _ = self.extract_wake_profile(x_wake)
+            ax5.plot(u_wake, y_wake, label=f'x/c = {x_wake}', linewidth=2)
+        ax5.axvline(x=1.0, color='k', linestyle='--', alpha=0.5)
+        ax5.set_xlabel('u/U∞')
+        ax5.set_ylabel('y/c')
+        ax5.set_title('Wake Velocity Profiles')
+        ax5.grid(True, alpha=0.3)
+        ax5.legend()
+        ax5.set_ylim(self.y_min, self.y_max)
+
+        ax6 = plt.subplot(3, 2, 6)
+        if self.loss_history:
+            losses = np.array([[l['physics'], l['inlet'], l['outlet'],
+                                l['airfoil'], l['periodic']]
+                               for l in self.loss_history])
+            ax6.semilogy(losses[:, 0], label='Physics', linewidth=2)
+            ax6.semilogy(losses[:, 1], label='Inlet BC', linewidth=2)
+            ax6.semilogy(losses[:, 2], label='Outlet BC', linewidth=2)
+            ax6.semilogy(losses[:, 3], label='Airfoil BC', linewidth=2)
+            ax6.semilogy(losses[:, 4], label='Periodic BC', linewidth=2)
+            ax6.set_xlabel('Iteration')
+            ax6.set_ylabel('Loss')
+            ax6.set_title('Training Convergence')
+            ax6.grid(True, alpha=0.3)
+            ax6.legend()
+
+        plt.tight_layout()
+        if save_figs:
+            plt.savefig('cascade_flow_results.png', dpi=150, bbox_inches='tight')
+            print("Results saved to 'cascade_flow_results.png'")
+        plt.show()
+
+        cl, cd = self.compute_force_coefficients()
+        print("\nForce Coefficients:...")
+        print(f"  Lift coefficient (Cl): {cl:.6f}")
+        print(f"  Drag coefficient (Cd): {cd:.6f}")
+        if abs(cd) > 1e-12:
+            print(f"  L/D ratio: {cl / cd:.2f}")
+
+        return fig
+
+
+def main():
+    print("=" * 60)
+    print("PINN Simulation: NACA 0012 Cascade Flow")
+    print("=" * 60)
+    print(f"Reynolds number: Re = 200")
+    print(f"Chord length: c = 1.0")
+    print(f"Solidity: σ = 1.0")
+    print(f"Angle of attack: α = 0°")
+    print("=" * 60)
+
+    solver = CascadeFlowSolver(
+        Re=200,
+        chord=1.0,
+        solidity=1.0,
+        use_residual_adaptive=True,
+        resample_every=200,
+        pool_domain_size=64000,  # doubled from 40k -> 64k
+        pool_boundary_size=16000,  # doubled from 8k -> 16k
+        hybrid_fraction=0.3,
+        n_cand_max=16000,  # increase candidate pool for better adaptive sampling
+        cand_batch_size=1000  # chunk size for residual eval (increase if memory allows)
+    )
+
+    solver.train(epochs=15000, print_every=200, batch_dom=4096, batch_bnd=1024)
+
+    fig = solver.visualize_results(save_figs=True)
+
+    print("\n" + "=" * 60)
+    print("Analysis Complete!")
+    print("=" * 60)
+    solver.compute_diagnostics()
+    return solver, fig
+
+
+if __name__ == "__main__":
+    solver, fig = main()
