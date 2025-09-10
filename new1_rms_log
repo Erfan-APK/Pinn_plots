@@ -4,6 +4,6 @@ GPU: NVIDIA GeForce RTX 3080
 Memory Allocated: 0.00 MB
 Solver instance obtained. Loading checkpoint: checkpoints/best_model.pt
 Loaded weights from checkpoint key: 'model_state'
-Seam RMS mismatch — u: 1.280e+00, v: 8.077e-02
+Seam RMS mismatch — u: 1.238e+00, v: 7.880e-02
 
 Process finished with exit code 0
