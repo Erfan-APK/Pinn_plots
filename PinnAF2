@@ -314,6 +314,13 @@ class CascadeFlowSolver:
         self.pool_domain_size = pool_domain_size
         self.pool_boundary_size = pool_boundary_size
 
+        # target v-derivative periodic weight (used inside compute_losses)
+        self.w_v_per_base = 0.30  # target value (what you set earlier)
+        self.w_v_per_current = 0.0  # will be warmed up during training
+        # optionally u-derivative base (keep small)
+        self.w_u_per_base = 0.05
+        self.w_u_per_current = 0.05
+
     # ----------------------
     # Collocation / sampling
     # ----------------------
@@ -338,7 +345,7 @@ class CascadeFlowSolver:
         inside_mask = self.airfoil.is_inside(x_cand, y_cand, pitch=self.pitch)
         x_dom = x_cand[~inside_mask][:n_domain]
         y_dom = y_cand[~inside_mask][:n_domain]
-        
+
 
         # inlet and outlet points
         n_inlet = max(8, n_boundary // 4)
@@ -391,10 +398,38 @@ class CascadeFlowSolver:
         Returns: (L_total (tensor), loss_dict (python floats))
         """
         # Unpack
+        # Unpack
         x_dom, y_dom = samples['domain']
         x_in, y_in = samples['inlet']
         x_out, y_out = samples['outlet']
         x_surf, y_surf = samples['airfoil']
+
+        # ------------------------
+        # seam-focused sampling (augment domain collocation near left periodic seam)
+        # ------------------------
+        # fraction of domain batch to concentrate near seam (tune: 0.10-0.30)
+        seam_frac = 0.4
+        try:
+            n_dom_curr = int(x_dom.shape[0])
+        except Exception:
+            n_dom_curr = 0
+        n_seam = int(round(seam_frac * max(1, n_dom_curr)))
+
+        if n_seam > 0:
+            # seam width measured from x_min inward (tune: 0.25-1.0)
+            seam_width = 0.2
+            # uniform random sampling in x ∈ [x_min, x_min + seam_width], y ∈ [y_min, y_max]
+            x_seam = (torch.rand(n_seam, 1, device=device) * seam_width) + float(self.x_min)
+            y_seam = (torch.rand(n_seam, 1, device=device) * (self.y_max - self.y_min) + self.y_min)
+            # reject points inside the airfoil geometry
+            inside_mask_seam = self.airfoil.is_inside(x_seam, y_seam, pitch=self.pitch)
+            if inside_mask_seam.numel() > 0:
+                x_seam = x_seam[~inside_mask_seam]
+                y_seam = y_seam[~inside_mask_seam]
+            # concatenate seam points to domain batch
+            if x_seam.numel() > 0:
+                x_dom = torch.cat([x_dom, x_seam], dim=0)
+                y_dom = torch.cat([y_dom, y_seam], dim=0)
 
         # Ensure coordinates that will be differentiated have requires_grad=True
         x_dom = x_dom.clone().detach().to(device).requires_grad_(True)
@@ -462,8 +497,9 @@ class CascadeFlowSolver:
 
         # enable small velocity-matching weights to enforce derivative continuity across seam
         # (raise gradually if needed; avoid too-large values that destabilize L_pde)
-        w_u_per = 0.10  # try 0.10 (increase from 0.05). u = dpsi/dy (streamwise velocity)
-        w_v_per = 0.10  # try 0.10 (increase from 0.05). v = -dpsi/dx (cross-stream velocity)
+        # increase v-derivative enforcement (v = -dpsi/dx) — target derivative mismatch at seam
+        w_u_per = 0.05  # keep small — u was already small
+        w_v_per = 0.30  # raise v weight to 0.3 (try 0.2–0.5 range)
 
         u_top, v_top = _uv_from_psi_local(psi_top, x_pairs, y_top, create_graph=True)
         u_bot, v_bot = _uv_from_psi_local(psi_bot, x_pairs, y_bot, create_graph=True)
@@ -501,6 +537,8 @@ class CascadeFlowSolver:
             'L_out': float(L_out.detach().cpu().item()),
             'L_periodic': float(L_per.detach().cpu().item()),
             'L_psi_periodic': float(L_psi_per.detach().cpu().item()),
+            'L_u_periodic': float(L_u_per.detach().cpu().item()) if 'L_u_per' in locals() else 0.0,
+            'L_v_periodic': float(L_v_per.detach().cpu().item()) if 'L_v_per' in locals() else 0.0,
             'L_p_anchor': float(L_p_anchor.detach().cpu().item()) if isinstance(L_p_anchor, torch.Tensor) else 0.0
         }
 
@@ -759,8 +797,12 @@ class CascadeFlowSolver:
 
             # logging
             if step % log_every == 0 or step == 1:
-                print(f"[step {step:06d}] L_total={loss_dict['L_total']:.3e} L_pde={loss_dict['L_pde']:.3e} "
-                      f"L_wall={loss_dict['L_wall']:.3e} L_in={loss_dict['L_inlet']:.3e} L_out={loss_dict['L_out']:.3e} L_per={loss_dict['L_periodic']:.3e}")
+                print(
+                    f"[step {step:06d}] L_total={loss_dict['L_total']:.3e} L_pde={loss_dict['L_pde']:.3e} "
+                    f"L_wall={loss_dict['L_wall']:.3e} L_in={loss_dict['L_inlet']:.3e} L_out={loss_dict['L_out']:.3e} "
+                    f"L_per={loss_dict.get('L_periodic', 0):.3e} L_u_per={loss_dict.get('L_u_periodic', 0):.3e} L_v_per={loss_dict.get('L_v_periodic', 0):.3e}"
+                )
+
             # store
             if step % max(1, int(n_steps/1000)) == 0:
                 self.loss_history.append(loss_dict)
