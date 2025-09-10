@@ -1,0 +1,19 @@
+VALIDATION REPORT
+
+Solver instance created.
+Loaded model into solver.
+Domain residual RMS (via physics_loss): 5.045291e-01 (mean of sqrt of sum-sq)
+Seam psi RMS: 4.709822e-02
+Seam p RMS: 7.673734e-02
+Seam u RMS: 2.322061e-01
+Seam v RMS: 5.816162e-02
+Inlet psi anchor RMS: 1.940632e-02
+Outlet p anchor RMS: 7.430234e-03
+compute_forces -> Cl=7.76258134e-03, Cd_raw=-5.53220036e-02, Cd_mag=5.53220036e-02
+Wrote Cp_candidate.png (from compute_forces outputs)
+
+Suggested thresholds / interpretation:
+- seam u RMS <= 0.5 OK; <=0.2 great
+- seam psi RMS <= 0.1 OK; <=0.05 great
+- outlet p RMS <= 0.1
+- domain residual RMS <= 0.4 OK; <=0.2 great
