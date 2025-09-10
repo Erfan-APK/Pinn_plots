@@ -336,16 +336,17 @@ class CascadeFlowSolver:
         xt_grad = torch.tensor(X.ravel(), dtype=torch.float32, device=device).unsqueeze(1).requires_grad_(True)
         yt_grad = torch.tensor(Y.ravel(), dtype=torch.float32, device=device).unsqueeze(1).requires_grad_(True)
 
-        with torch.no_grad():
-            # optional: set model to eval() for stable behaviour (physics_loss still uses autograd internally)
-            self.model.eval()
+        # --- compute momentum residuals using autograd (for diagnostics) ---
+        # model in eval mode is fine, but we MUST allow autograd while physics_loss computes derivatives
+        self.model.eval()
+        with torch.enable_grad():
+            mx, my, cont = self.model.physics_loss(xt_grad, yt_grad)
 
-        # compute momentum residuals using model.physics_loss (it will create its own graph for grads)
-        mx, my, cont = self.model.physics_loss(xt_grad, yt_grad)
+        # detach and convert to numpy for plotting
         R = torch.sqrt(mx.detach() ** 2 + my.detach() ** 2).cpu().numpy().ravel().reshape(X.shape)
         cont_map = torch.abs(cont.detach()).cpu().numpy().ravel().reshape(X.shape)
 
-        # free grad tensors
+        # free memory of the large gradient tensors
         del xt_grad, yt_grad
         torch.cuda.empty_cache()
 
@@ -441,7 +442,7 @@ class CascadeFlowSolver:
         plt.tight_layout()
         fig.savefig(fname, dpi=150, bbox_inches='tight')
         print(f"Saved diagnostics to {fname}")
-        plt.show()
+        #plt.show()
         plt.close(fig)
 
     def generate_collocation_points(self, n_domain=None, n_boundary=None, seed=42):
