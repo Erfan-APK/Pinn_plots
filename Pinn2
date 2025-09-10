@@ -61,16 +61,22 @@ def sobol_points(n, x_min, x_max, y_min, y_max, device=device, seed=None):
 # ----------------------
 import csv
 
-def save_checkpoint(path, model, optimizer, step, loss_dict):
-    """Save model + optimizer state to path (creates folder if needed)."""
+def save_checkpoint(path, model, optimizer, step, loss_dict, scheduler=None):
+    """Save model + optimizer (+ optional scheduler) state to path (creates folder if needed)."""
     ckpt = {
         'step': step,
         'model_state': model.state_dict(),
         'optim_state': optimizer.state_dict(),
         'loss_dict': loss_dict
     }
+    if scheduler is not None:
+        try:
+            ckpt['scheduler_state'] = scheduler.state_dict()
+        except Exception:
+            pass
     os.makedirs(os.path.dirname(path), exist_ok=True)
     torch.save(ckpt, path)
+
 
 def append_csv_metrics(csv_path, header, row):
     """Append a row to csv_path, writing header if file doesn't exist."""
@@ -80,6 +86,26 @@ def append_csv_metrics(csv_path, header, row):
         if write_header:
             writer.writerow(header)
         writer.writerow(row)
+
+def load_checkpoint(path, model, optimizer, scheduler=None, device=device):
+    """Load checkpoint and restore model/optimizer (and scheduler if present).
+    Returns the saved step (int)."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Checkpoint not found: {path}")
+    ckpt = torch.load(path, map_location=device)
+    # model / optimizer
+    model.load_state_dict(ckpt['model_state'])
+    optimizer.load_state_dict(ckpt['optim_state'])
+    # optional scheduler state
+    if scheduler is not None and 'scheduler_state' in ckpt:
+        try:
+            scheduler.load_state_dict(ckpt['scheduler_state'])
+        except Exception as e:
+            print("Warning: failed to load scheduler state:", e)
+    start_step = int(ckpt.get('step', 0))
+    print(f"Loaded checkpoint '{path}' (step={start_step})")
+    return start_step
+
 
 # Geometry: NACA 0012 (simple symmetric thickness distribution)
 # ----------------------
@@ -255,6 +281,45 @@ class PINN(nn.Module):
         r_scalar = r.view(r.shape[0], -1).mean(dim=1).detach().cpu()
         return r_scalar
 
+    # ----------------------
+    # Adaptive residual sampling helpers
+    # ----------------------
+    import numpy as np
+    import torch
+
+    def compute_residual_grid(self, nx=200, ny=100):
+        """
+        Evaluate coarse residual grid on model (returns X, Y, R arrays on CPU).
+        X,Y shape = (ny, nx) as in np.meshgrid; R is 1D raveled array of residual magnitudes.
+        This uses autograd-safe evaluation via self.model.physics_loss with requires_grad.
+        """
+        xs = np.linspace(float(self.x_min), float(self.x_max), nx, dtype=np.float32)
+        ys = np.linspace(float(self.y_min), float(self.y_max), ny, dtype=np.float32)
+        X, Y = np.meshgrid(xs, ys, indexing='xy')
+        xt = torch.tensor(X.ravel()[:, None], dtype=torch.float32, device=device, requires_grad=True)
+        yt = torch.tensor(Y.ravel()[:, None], dtype=torch.float32, device=device, requires_grad=True)
+        # compute physics residuals (mx,my,cont) on the coarse grid
+        with torch.enable_grad():
+            mx, my, cont = self.model.physics_loss(xt, yt)
+        R = (mx.detach() ** 2 + my.detach() ** 2 + cont.detach() ** 2).cpu().numpy().ravel()
+        return X, Y, R
+
+    def sample_from_residual_grid(X, Y, R, n_samples, exponent=1.5):
+        """
+        Given coarse grid arrays X,Y and residual array R (raveled), sample n_samples points
+        with probability ~ R**exponent. Returns (x_samples_tensor, y_samples_tensor) on device.
+        """
+        probs = (R + 1e-12) ** float(exponent)
+        probs = probs / probs.sum()
+        idx = np.random.choice(len(probs), size=n_samples, p=probs)
+        x_samples = X.ravel()[idx][:, None].astype(np.float32)
+        y_samples = Y.ravel()[idx][:, None].astype(np.float32)
+        return (
+            torch.tensor(x_samples, dtype=torch.float32, device=device),
+            torch.tensor(y_samples, dtype=torch.float32, device=device)
+        )
+
+
 # ----------------------
 # Solver
 # ----------------------
@@ -294,11 +359,13 @@ class CascadeFlowSolver:
         self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=20000, eta_min=1e-6)
 
         # sampling and adaptive params
-        self.use_residual_adaptive = use_residual_adaptive
-        self.resample_every = resample_every
+        self.use_residual_adaptive = True
+        self.resample_every = 250        # refresh coarse grid every 250 steps
+        self.hybrid_fraction = 0.6  # 60% of domain batch from residual sampling
         self.pool_domain_size = pool_domain_size
         self.pool_boundary_size = pool_boundary_size
-        self.hybrid_fraction = hybrid_fraction
+        # coarse grid resolution to compute residual map (reduce if OOM)
+        # residual grid sizes are set in the mixing block (residual_nx, residual_ny)
         self.n_cand_max = n_cand_max
         self.cand_batch_size = cand_batch_size
 
@@ -410,6 +477,73 @@ class CascadeFlowSolver:
             'outlet': (x_outlet, y_outlet),
             'airfoil': (x_airfoil_full, y_airfoil_full),
         }
+
+    # inside class CascadeFlowSolver:
+
+    def residuals_fd_9pt(self, x_tensor, y_tensor, eps=1e-3, batch_size=8192):
+        """
+        Wrapper that delegates to self.model.residuals_fd_9pt(...) but does it in batches.
+        Accepts x_tensor,y_tensor on any device (CPU/GPU) and returns a 1D numpy array of residual scalars.
+        """
+        # ensure 2D column tensors
+        if x_tensor.dim() == 1:
+            x_tensor = x_tensor.unsqueeze(1)
+        if y_tensor.dim() == 1:
+            y_tensor = y_tensor.unsqueeze(1)
+
+        n = x_tensor.shape[0]
+        if n == 0:
+            return np.empty((0,), dtype=np.float32)
+
+        results = []
+        # we will keep batch tensors on the same device as the model for forward speed
+        model_device = next(self.model.parameters()).device
+
+        # If inputs are on CPU but model on GPU, move batches to model device temporarily.
+        for i in range(0, n, batch_size):
+            xb = x_tensor[i:i + batch_size].to(model_device)
+            yb = y_tensor[i:i + batch_size].to(model_device)
+            # call the PINN FD scorer (which returns a torch CPU tensor in current repo)
+            with torch.no_grad():
+                r_bt = self.model.residuals_fd_9pt(xb, yb, eps=eps)
+            # ensure on CPU numpy
+            results.append(r_bt.detach().cpu().numpy())
+        return np.concatenate(results, axis=0)
+
+    # -------------------------
+    # Adaptive helper wrappers (use module-level helpers if available,
+    # otherwise fallback to PINN FD scorer via self.model)
+    # -------------------------
+    def compute_residual_grid(self, nx=200, ny=100):
+        """Return X,Y,R (numpy arrays) for a coarse residual map."""
+        try:
+            # if module-level implementation exists, use it
+            return compute_residual_grid(self, nx=nx, ny=ny)
+        except Exception:
+            # fallback: use a safe FD scorer from the model (PINN.residuals_fd_9pt)
+            xs = np.linspace(float(self.x_min), float(self.x_max), nx, dtype=np.float32)
+            ys = np.linspace(float(self.y_min), float(self.y_max), ny, dtype=np.float32)
+            X, Y = np.meshgrid(xs, ys, indexing='xy')
+            xt = torch.tensor(X.ravel()[:, None], dtype=torch.float32, device=device)
+            yt = torch.tensor(Y.ravel()[:, None], dtype=torch.float32, device=device)
+            # call model's FD scorer (always exists)
+            R = self.model.residuals_fd_9pt(xt, yt).cpu().numpy().ravel()
+            return X, Y, R
+
+    def sample_from_residual_grid(self, X, Y, R, n_samples, exponent=1.5):
+        """Importance-sample n_samples points from residual grid arrays."""
+        try:
+            return sample_from_residual_grid(X, Y, R, n_samples, exponent=exponent)
+        except Exception:
+            probs = (R + 1e-12) ** float(exponent)
+            probs = probs / probs.sum()
+            idx = np.random.choice(len(probs), size=n_samples, p=probs)
+            x_samples = X.ravel()[idx][:, None].astype(np.float32)
+            y_samples = Y.ravel()[idx][:, None].astype(np.float32)
+            return (
+                torch.tensor(x_samples, dtype=torch.float32, device=device),
+                torch.tensor(y_samples, dtype=torch.float32, device=device)
+            )
 
     # ----------------------
     # Loss assembly
@@ -682,7 +816,11 @@ class CascadeFlowSolver:
         denom = 0.5 * 1.0 * (self.U ** 2) * self.chord
         C_D = F_x / denom
         C_L = F_y / denom
+        # store last computed forces for logging
+        self.last_Cl = float(C_L)
+        self.last_Cd = float(C_D)
         return C_L, C_D, xs, ys, p_vals, tx, ty
+
 
     # ----------------------
     # Diagnostics (plots)
@@ -760,17 +898,8 @@ class CascadeFlowSolver:
     # ----------------------
     # Training loop (backwards-compatible)
     # ----------------------
-    def train(self,
-              epochs=None,
-              n_steps=None,
-              print_every=None,
-              log_every=None,
-              batch_dom=None,
-              batch_domain=None,
-              batch_bnd=None,
-              batch_boundary=None,
-              lbfgs_after=True,
-              lbfgs_iters=200):
+    def train(self, epochs=None, n_steps=None, print_every=None, log_every=None, batch_dom=None, batch_domain=None, batch_bnd=None, batch_boundary=None, lbfgs_after=True, lbfgs_iters=200, resume_path=None):
+
         """
         Backwards-compatible train method:
          - accepts old keywords: epochs, print_every, batch_dom, batch_bnd
@@ -792,19 +921,79 @@ class CascadeFlowSolver:
         batch_domain = int(batch_domain)
         batch_boundary = int(batch_boundary)
 
+        # optional resume from checkpoint
+        start_step = 0
+        if 'resume_path' in locals() and resume_path is not None:
+            try:
+                start_step = load_checkpoint(resume_path, self.model, self.optimizer, self.scheduler)
+                print("Resumed from checkpoint. LR after load:", self.scheduler.get_last_lr()[0])
+
+            except Exception as e:
+                print("Warning: failed to resume from resume_path:", e)
+
         print(f"Starting training for {n_steps} steps; batch_domain={batch_domain}, batch_boundary={batch_boundary}")
 
         self.model.train()
         warmup_steps = max(100, int(0.05 * n_steps))
-        for step in range(1, n_steps + 1):
+        for step in range(start_step + 1, n_steps + 1):
+
             samples = self.generate_collocation_points(n_domain=batch_domain, n_boundary=batch_boundary, seed=step)
+            # ------------------------------
+            # Adaptive-residual sampling mix (in training loop, after samples generated)
+            # ------------------------------
+            # Parameters (tune if OOM: reduce grid nx,ny or residual_fraction)
+            adaptive_T = getattr(self, 'resample_every', 250)  # refresh freq (steps)
+            residual_fraction = getattr(self, 'hybrid_fraction', 0.6)  # fraction of domain batch from residuals
+            residual_nx = 200
+            residual_ny = 100
+            residual_exponent = 1.5  # >1 focuses more on high residuals
+
+            # persistent placeholders on solver instance (created first time used)
+            if not hasattr(self, '_adaptive_res_X'):
+                self._adaptive_res_X = None
+                self._adaptive_res_Y = None
+                self._adaptive_res_R = None
+
+            # update coarse residual grid every adaptive_T steps
+            if step % adaptive_T == 0:
+                try:
+                    self._adaptive_res_X, self._adaptive_res_Y, self._adaptive_res_R = self.compute_residual_grid(nx=residual_nx, ny=residual_ny)
+
+                except Exception as e:
+                    # if residual grid computation fails, keep previous grid (or None)
+                    print("Warning: compute_residual_grid failed:", e)
+                    self._adaptive_res_X, self._adaptive_res_Y, self._adaptive_res_R = None, None, None
+
+            # if we have a residual grid, sample from it and mix into the domain batch
+            if getattr(self, '_adaptive_res_X', None) is not None:
+                try:
+                    # original domain batch
+                    x_dom, y_dom = samples['domain']
+                    n_dom = int(x_dom.shape[0])
+                    n_res = int(round(residual_fraction * n_dom))
+                    n_uniform = max(0, n_dom - n_res)
+                    # sample residual points
+                    x_res, y_res = self.sample_from_residual_grid(self._adaptive_res_X, self._adaptive_res_Y, self._adaptive_res_R, n_res, exponent=residual_exponent)
+
+                    # keep the first n_uniform points from current domain as uniform complement (or resample)
+                    x_uniform = x_dom[:n_uniform]
+                    y_uniform = y_dom[:n_uniform]
+                    # build new mixed domain batch and update samples
+                    x_dom = torch.cat([x_uniform.to(device), x_res], dim=0).requires_grad_(True)
+                    y_dom = torch.cat([y_uniform.to(device), y_res], dim=0).requires_grad_(True)
+                    samples['domain'] = (x_dom, y_dom)
+                except Exception as e:
+                    print("Warning: adaptive mixing failed:", e)
+            # else: no grid available yet -> use original samples as-is
 
             loss, loss_dict = self.compute_losses(samples)
 
             self.optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
+            # gradient clipping to stabilize training (max norm)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.optimizer.step()
+            # scheduler step (per-step cosine anneal)
             try:
                 self.scheduler.step()
             except Exception:
@@ -837,11 +1026,16 @@ class CascadeFlowSolver:
             # logging
             # logging + CSV + checkpointing + optional diagnostics snapshot
             if step % log_every == 0 or step == 1:
-                print(
-                    f"[step {step:06d}] L_total={loss_dict['L_total']:.3e} L_pde={loss_dict['L_pde']:.3e} "
-                    f"L_wall={loss_dict['L_wall']:.3e} L_in={loss_dict['L_inlet']:.3e} L_out={loss_dict['L_out']:.3e} "
-                    f"L_per={loss_dict.get('L_periodic', 0):.3e} L_u_per={loss_dict.get('L_u_periodic', 0):.3e} L_v_per={loss_dict.get('L_v_periodic', 0):.3e}"
-                )
+                # logging + CSV + checkpointing + optional diagnostics snapshot
+                if step % log_every == 0 or step == 1:
+                    # get current LR (scheduler.get_last_lr() returns a list)
+                    lr = self.scheduler.get_last_lr()[0] if hasattr(self, 'scheduler') else 0.0
+                    print(
+                        f"[step {step:06d}] L_total={loss_dict['L_total']:.3e} L_pde={loss_dict['L_pde']:.3e} "
+                        f"L_wall={loss_dict['L_wall']:.3e} L_in={loss_dict['L_inlet']:.3e} L_out={loss_dict['L_out']:.3e} "
+                        f"L_per={loss_dict.get('L_periodic', 0):.3e} L_u_per={loss_dict.get('L_u_periodic', 0):.3e} L_v_per={loss_dict.get('L_v_periodic', 0):.3e} LR={lr:.3e}"
+                    )
+                    ...
 
                 # ------------------------
                 # CSV logging
@@ -860,6 +1054,18 @@ class CascadeFlowSolver:
                     float(getattr(self, 'last_Cd', 0.0))
                 ]
                 append_csv_metrics(csv_path, header, row)
+                # save best-so-far model by L_total
+                best_key = 'best_L_total'
+                current_L_total = float(loss_dict.get('L_total', 1e30))
+                if not hasattr(self, best_key) or current_L_total < getattr(self, best_key):
+                    # new best
+                    setattr(self, best_key, current_L_total)
+                    best_path = 'checkpoints/best_model.pt'
+                    try:
+                        save_checkpoint(best_path, self.model, self.optimizer, step, loss_dict, self.scheduler)
+                        print(f"Saved best model (L_total={current_L_total:.3e}): {best_path}")
+                    except Exception as e:
+                        print("Warning: failed saving best model:", e)
 
                 # ------------------------
                 # Checkpoint every ckpt_every steps
@@ -868,7 +1074,7 @@ class CascadeFlowSolver:
                 if step % ckpt_every == 0:
                     ckpt_path = f'checkpoints/ckpt_step_{step:06d}.pt'
                     try:
-                        save_checkpoint(ckpt_path, self.model, self.optimizer, step, loss_dict)
+                        save_checkpoint(ckpt_path, self.model, self.optimizer, step, loss_dict, self.scheduler)
                         print(f"Saved checkpoint: {ckpt_path}")
                     except Exception as e:
                         print("Warning: failed saving checkpoint:", e)
@@ -924,9 +1130,14 @@ def main(train_flag=True):
         # small quick run for debugging; increase n_steps when you are happy
 
         # ---quick test----: fewer steps, smaller batches, check periodic loss behaviour
-        solver.train(epochs=3000, print_every=100, batch_dom=5000, batch_bnd=1000, lbfgs_after=False)
+        #solver.train(epochs=3000, print_every=100, batch_dom=5000, batch_bnd=1000, lbfgs_after=False)
         #this was the long run:
         #solver.train(epochs=20000, print_every=500, batch_dom=20000, batch_bnd=4000, lbfgs_after=True)
+        #solver.train(epochs=20000, print_every=500, batch_dom=20000, batch_bnd=4000, lbfgs_after=True)
+
+        #FOR RESUME TEST: example: resume for 200 steps to test
+        solver.train(epochs=5000, print_every=100, batch_dom=5000, batch_bnd=1000, lbfgs_after=False, resume_path='checkpoints/best_model.pt')
+
 
         # diagnostics and forces after quick run
         solver.compute_diagnostics(fname='diagnostics_after_quick.png')
