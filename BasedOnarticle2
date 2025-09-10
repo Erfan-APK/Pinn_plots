@@ -284,7 +284,10 @@ class CascadeFlowSolver:
         self.w_in_base = 100.0
         self.w_out_base = 100.0
         self.w_foil_base = 200.0
-        self.w_per_base = 50.0
+
+        # increase lateral-periodic base weight (was 50.0):
+        self.w_per_base = 250.0  # 5x stronger; try 250.0 first, increase to 500.0 if needed
+
         self.w_gauge_base = 1e-2
         # current active weights (start small, warmup in train)
         self.w_phys = 1e-6
@@ -296,7 +299,10 @@ class CascadeFlowSolver:
 
         # psi and p anchors and other constants
         self.U = 1.0  # freestream nondim
-        self.w_psi_periodic = 10.0
+
+        # make psi periodic anchor stronger (optional):
+        self.w_psi_periodic = 50.0
+
         self.w_p_anchor = 100.0
         self.x_out_anchor = self.x_max
         self.y_anchor = 0.0
@@ -782,7 +788,11 @@ def main(train_flag=True):
 
     if train_flag:
         # small quick run for debugging; increase n_steps when you are happy
-        solver.train(epochs=20000, print_every=500, batch_dom=20000, batch_bnd=4000, lbfgs_after=True)
+
+        # ---quick test----: fewer steps, smaller batches, check periodic loss behaviour
+        solver.train(epochs=2000, print_every=100, batch_dom=5000, batch_bnd=1000, lbfgs_after=False)
+        #this was the long run:
+        #solver.train(epochs=20000, print_every=500, batch_dom=20000, batch_bnd=4000, lbfgs_after=True)
 
         # diagnostics and forces after quick run
         solver.compute_diagnostics(fname='diagnostics_after_quick.png')
