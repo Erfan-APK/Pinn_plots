@@ -1,0 +1,17 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/Pinn2.py 
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Initial loss dict (smoke): {'L_total': 0.4021648168563843, 'L_pde': 0.008066108450293541, 'L_wall': 0.009656406939029694, 'L_inlet': 0.12840993702411652, 'L_out': 0.0011919091921299696, 'L_periodic': 0.008397161960601807, 'L_psi_periodic': 0.006284247152507305, 'L_u_periodic': 0.0002542213478591293, 'L_v_periodic': 1.0410918548586778e-05, 'L_p_anchor': 0.0008795229950919747}
+Loaded checkpoint 'checkpoints/best_model.pt' (step=4900)
+Resumed from checkpoint. LR after load: 0.0004296997802116646
+Starting training for 5000 steps; batch_domain=5000, batch_boundary=1000
+Warning: compute_residual_grid failed: 'CascadeFlowSolver' object has no attribute 'residuals_fd_9pt'
+[step 005000] L_total=2.074e+00 L_pde=1.644e-01 L_wall=1.371e-04 L_in=1.095e-02 L_out=4.644e-04 L_per=1.213e-03 L_u_per=2.077e-03 L_v_per=3.249e-03 LR=4.270e-04
+Saved best model (L_total=2.074e+00): checkpoints/best_model.pt
+Saved checkpoint: checkpoints/ckpt_step_005000.pt
+Saved diagnostics to diagnostics_step_005000.png
+Saved diagnostics to diagnostics_after_quick.png
+Quick-run Cl=1.0819e-02, Cd=-6.5703e-04
+
+Process finished with exit code 0
