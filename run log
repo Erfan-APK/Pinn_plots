@@ -11,11 +11,11 @@ Solidity: σ = 1.0
 Angle of attack: α = 0°
 ============================================================
 Starting training...
-Epoch 50/200, Time: 4.8s, LR: 5.00e-04
+Epoch 50/200, Time: 6.0s, LR: 5.00e-04
   Total: 1.999335 | Phys: 0.000113 | Inlet: 0.004594 | Outlet: 0.000022 | Foil: 0.606852 | Periodic: 0.000589
     mean |p_top-p_bot| = 2.061e-03
     [dbg] near-wall residuals (N=512): mean=6.353e-04, max=7.165e-03
-Epoch 100/200, Time: 7.7s, LR: 5.00e-04
+Epoch 100/200, Time: 9.8s, LR: 5.00e-04
   Total: 1.245935 | Phys: 0.004467 | Inlet: 0.009121 | Outlet: 0.009401 | Foil: 0.221745 | Periodic: 0.031611
     mean |p_top-p_bot| = 6.896e-03
     [dbg] near-wall residuals (N=512): mean=1.802e-03, max=1.844e-02
@@ -25,11 +25,11 @@ Epoch 100/200, Time: 7.7s, LR: 5.00e-04
     selected top 2000 residual points (pre-thinning)
     after thinning, top-residual points: 1000
     [resample done] top-residual pts: 1000, uniform pts: 3000
-Epoch 150/200, Time: 22.7s, LR: 5.00e-04
+Epoch 150/200, Time: 27.7s, LR: 5.00e-04
   Total: 0.162127 | Phys: 0.018012 | Inlet: 0.005364 | Outlet: 0.000880 | Foil: 0.022181 | Periodic: 0.000204
     mean |p_top-p_bot| = 1.432e-02
     [dbg] near-wall residuals (N=512): mean=2.281e-03, max=1.085e-02
-Epoch 200/200, Time: 25.7s, LR: 5.00e-04
+Epoch 200/200, Time: 30.9s, LR: 5.00e-04
   Total: 0.131129 | Phys: 0.020305 | Inlet: 0.005955 | Outlet: 0.000827 | Foil: 0.008467 | Periodic: 0.000072
     mean |p_top-p_bot| = 2.878e-03
     [dbg] near-wall residuals (N=512): mean=5.005e-04, max=2.714e-03
@@ -40,7 +40,7 @@ Epoch 200/200, Time: 25.7s, LR: 5.00e-04
     after thinning, top-residual points: 1000
     [resample done] top-residual pts: 1000, uniform pts: 3000
 
-Training completed in 37.8 seconds
+Training completed in 44.9 seconds
 
 Generating visualizations...
 Results saved to 'cascade_flow_results.png'
@@ -54,13 +54,5 @@ Force Coefficients:...
 Analysis Complete!
 ============================================================
 Saved diagnostics to diagnostics.png
-Traceback (most recent call last):
-  File "/mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/edit by gpt/eight/eightSecond/second.py", line 1356, in <module>
-    solver, fig = main()
-                  ^^^^^^
-  File "/mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/edit by gpt/eight/eightSecond/second.py", line 1352, in main
-    return solver, fig
-                   ^^^
-NameError: name 'fig' is not defined
 
-Process finished with exit code 1
+Process finished with exit code 0
