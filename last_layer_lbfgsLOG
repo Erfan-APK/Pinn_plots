@@ -1,0 +1,31 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/last_layer_lbfgs.py 
+Loading module Pinn2
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Solver created
+Initial seam loss: 9.903167724609375
+Optimizing last 2 parameter tensors (sizes): [(2, 128), (2,)]
+LBFGS iter 5, loss = 9.744892e-01
+LBFGS iter 10, loss = 3.372981e-02
+LBFGS iter 15, loss = 1.557377e-02
+LBFGS iter 20, loss = 9.266073e-03
+LBFGS error: element 0 of tensors does not require grad and does not have a grad_fn
+Traceback (most recent call last):
+  File "/mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/last_layer_lbfgs.py", line 107, in main
+    u_t, v_t = solver.model._uv_from_psi(psi_t, xt, yt, create_graph=False)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/Pinn2.py", line 202, in _uv_from_psi
+    u = torch.autograd.grad(psi, y, grad_outputs=ones, create_graph=create_graph, retain_graph=True)[0]
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/erfan/pinn_envs/pinn_1/lib/python3.12/site-packages/torch/autograd/__init__.py", line 503, in grad
+    result = _engine_run_backward(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/erfan/pinn_envs/pinn_1/lib/python3.12/site-packages/torch/autograd/graph.py", line 829, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: element 0 of tensors does not require grad and does not have a grad_fn
+Saved last-layer polished model to checkpoints/last_layer_polished_model.pt
+Done. Now run diagnostics: compute_loss_components_v2.py and seam_rms_check_v3.py
+
+Process finished with exit code 0
