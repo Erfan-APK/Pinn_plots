@@ -1,0 +1,28 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/resume_long_adaptive.py 
+Loading module Pinn2
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Solver created.
+Loaded model state
+Set w_p_anchor = 500.0
+Set w_psi_periodic = 300.0
+Set w_per_base = 500.0
+Set w_u_per_base = 1.0
+Set w_v_per_base = 0.12
+Set hybrid_fraction = 0.55
+Set resample_every = 200
+Resuming from step 0 -> total steps 20000
+Warning: failed to resume from resume_path: 'optim_state'
+Starting training for 20000 steps; batch_domain=20000, batch_boundary=4000
+[step 000001] L_total=6.010e+02 L_pde=6.452e-02 L_wall=3.023e-02 L_in=9.156e-02 L_out=1.197e+00 L_per=6.308e-03 L_u_per=1.813e-03 L_v_per=8.920e-04 LR=5.000e-04
+Saved best model (L_total=6.010e+02): checkpoints/best_model.pt
+[step 000500] L_total=1.859e+00 L_pde=6.780e-02 L_wall=5.132e-06 L_in=2.185e-02 L_out=5.937e-05 L_per=1.456e-03 L_u_per=6.434e-04 L_v_per=9.613e-03 LR=4.992e-04
+Saved best model (L_total=1.859e+00): checkpoints/best_model.pt
+[step 001000] L_total=2.756e+00 L_pde=8.783e-02 L_wall=2.190e-06 L_in=1.805e-02 L_out=5.252e-07 L_per=1.005e-03 L_u_per=4.077e-04 L_v_per=4.644e-03 LR=4.969e-04
+Saved checkpoint: checkpoints/ckpt_step_001000.pt
+Saved diagnostics to diagnostics_step_001000.png
+[step 001500] L_total=3.003e+00 L_pde=1.029e-01 L_wall=1.023e-06 L_in=2.089e-02 L_out=3.923e-05 L_per=9.092e-04 L_u_per=2.383e-04 L_v_per=4.395e-03 LR=4.931e-04
+[step 002000] L_total=2.757e+00 L_pde=1.611e-01 L_wall=4.341e-06 L_in=1.999e-02 L_out=1.049e-04 L_per=4.387e-04 L_u_per=8.146e-06 L_v_per=3.579e-03 LR=4.878e-04
+Saved checkpoint: checkpoints/ckpt_step_002000.pt
+Saved diagnostics to diagnostics_step_002000.png
