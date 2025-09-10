@@ -1,0 +1,36 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/promote_and_run_checks.py 
+Using Python: /home/erfan/pinn_envs/pinn_1/bin/python3
+Backed up checkpoints/best_model.pt -> checkpoints/best_model.pt.bak
+Promoted checkpoints/last_layer_polished_model.pt -> checkpoints/best_model.pt
+
+Running compute_loss_components.py ...
+
+Loading module Pinn2
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Instantiating solver...
+Solver created.
+Loading checkpoint: checkpoints/best_model.pt
+Model moved to device: cuda
+Domain extents: -2.0 6.0 -0.5 0.5
+Domain residual (mean,std): 0.11861305683851242 0.2177516222000122
+Seam psi L2 mean: 0.00035766768269240856 psi RMS: 0.01891210488975048
+Seam p   L2 mean: 0.0009946345817297697 p RMS: 0.03153782710433006
+Inlet psi anchor L2 mean / RMS: 0.16987189650535583 0.4121551811695099
+Outlet p anchor L2 mean / RMS: 1.9623050689697266 1.4008229970932007
+
+Interpretation hints:
+ - If psi RMS (L_psi_rms) is much larger than domain residual magnitude, increase w_psi_periodic or number of seam pairs.
+ - If p RMS large but outlet p small, raise w_p_anchor and increase periodic p pairing.
+ - If inlet anchor error is large, confirm inlet anchor formula (psi = U*y) matches your normalization.
+
+Running seam_rms_check.py ...
+
+Solver instance obtained. Loading checkpoint: checkpoints/best_model.pt
+Loaded weights from checkpoint key: 'model_state'
+Seam RMS mismatch — u: 2.732e-02, v: 6.108e-02
+
+Done. If you want to revert, run: cp checkpoints/best_model.pt.bak checkpoints/best_model.pt
+
+Process finished with exit code 0
