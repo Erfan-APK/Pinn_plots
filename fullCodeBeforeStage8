@@ -121,9 +121,13 @@ class PINN(nn.Module):
         y_n = (y - self.y_mean) / (self.y_scale + 1e-12)
         z = torch.cat([x_n, y_n], dim=1)
         out = self.net(z)
-        psi = out[:, 0:1]
-        p = out[:, 1:2]
+        psi_raw = out[:, 0:1]
+        p_raw = out[:, 1:2]
+        # apply scaling to map network outputs to physical units
+        psi = psi_raw * self.psi_scale
+        p = p_raw * self.p_scale
         return psi, p
+
 
     def _uv_from_psi(self, psi, x, y, create_graph=False, retain_graph=False):
         """Compute velocities u, v from streamfunction psi using autograd.
@@ -255,7 +259,7 @@ class CascadeFlowSolver:
     def __init__(self, Re=200, chord=1.0, solidity=1.0,
                  use_residual_adaptive=True, resample_every=200,
                  pool_domain_size=40000, pool_boundary_size=8000,
-                 hybrid_fraction=0.5,
+                 hybrid_fraction=0.3,
                  n_cand_max=8000, cand_batch_size=512):
         self.Re = Re
         self.chord = chord
@@ -263,7 +267,7 @@ class CascadeFlowSolver:
         self.pitch = chord / max(solidity, 1e-8)
 
         # Domain bounds
-        self.x_min, self.x_max = -2.0, 4.0
+        self.x_min, self.x_max = -2.0, 5.0
         self.y_min = -0.5 * self.pitch
         self.y_max = self.y_min + self.pitch
 
@@ -301,7 +305,7 @@ class CascadeFlowSolver:
         self.w_in_base = 10.0
         self.w_out_base = 5.0
         self.w_foil_base = 50.0
-        self.w_per_base = 5.0
+        self.w_per_base = 2.0
         self.w_gauge_base = 1e-2
 
         # Current active weights (will be ramped in train())
@@ -740,7 +744,8 @@ class CascadeFlowSolver:
         # --- Pressure periodic consistency (small penalty to align pressure gauge across periodic sides)
         # This prevents a pressure offset between top and bottom periodic boundaries
         # (small weight; tune later in Stage A).
-        p_per_loss = torch.mean((p_top - p_bot) ** 2) * 0.1
+        # --- Pressure periodic consistency (small penalty to align pressure gauge across periodic sides)
+        p_per_loss = torch.mean((p_top - p_bot) ** 2) * 0.08
         periodic_loss = periodic_vel_loss + periodic_psi_loss + p_per_loss
 
         # --- Pressure gauge: small penalty on mean inlet pressure to fix gauge
@@ -823,6 +828,16 @@ class CascadeFlowSolver:
                 print(f"  Total: {loss_dict['total']:.6f} | Phys: {loss_dict['physics']:.6f} | "
                       f"Inlet: {loss_dict['inlet']:.6f} | Outlet: {loss_dict['outlet']:.6f} | "
                       f"Foil: {loss_dict['airfoil']:.6f} | Periodic: {loss_dict['periodic']:.6f}")
+                # monitor mean absolute pressure difference across periodic boundaries
+                with torch.no_grad():
+                    x_sample = torch.linspace(self.x_min, self.x_max, 128, device=device).unsqueeze(1)
+                    y_top = torch.full_like(x_sample, self.y_min + self.pitch)
+                    y_bot = torch.full_like(x_sample, self.y_min)
+                    _, p_top_s = self.model(x_sample, y_top)
+                    _, p_bot_s = self.model(x_sample, y_bot)
+                    pdiff_mean = float(torch.mean(torch.abs(p_top_s - p_bot_s)).cpu())
+                print(f"    mean |p_top-p_bot| = {pdiff_mean:.3e}")
+
                 # -------- quick near-wall residual diagnostic (light-weight)
                 # sample a modest number of near-wall points (filtered to fluid region)
                 with torch.no_grad():
@@ -1282,15 +1297,20 @@ def main():
         chord=1.0,
         solidity=1.0,
         use_residual_adaptive=True,
-        resample_every=100,       # was 50
-        pool_domain_size=8000,
-        pool_boundary_size=2000,  # doubled from 8k -> 16k
-        hybrid_fraction=0.3,
-        n_cand_max=16000,  # increase candidate pool for better adaptive sampling
-        cand_batch_size=512  # chunk size for residual eval (increase if memory allows)
+        resample_every=100,
+        pool_domain_size=8000,  # much smaller for fast dev runs
+        pool_boundary_size=2000,
+        hybrid_fraction=0.5,
+        n_cand_max=8000,
+        cand_batch_size=512
     )
 
-    solver.train(epochs=600, print_every=100, batch_dom=2048, batch_bnd=512)
+    # keep psi/p scales explicit
+    solver.model.psi_scale = torch.tensor(1.0, device=device)
+    solver.model.p_scale = torch.tensor(1.0, device=device)
+
+    # short dev run
+    solver.train(epochs=800, print_every=100, batch_dom=2048, batch_bnd=512)
 
     fig = solver.visualize_results(save_figs=True)
 
