@@ -1,0 +1,17 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/seam_lbfgs_polish.py 
+Loading module: Pinn2
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Solver created.
+Preparing seam pairs (n_pairs=2048)
+Initial seam loss: 9.903167724609375
+Optimizing 12 parameter tensors with LBFGS (this may be slow);
+LBFGS iter 10, loss = 2.043611e-02
+LBFGS iter 20, loss = 1.090745e-03
+After outer 1: seam RMS (u,v,psi,p) = 1.1290e-02, 1.3412e-02, 8.0124e-04, 1.0591e-02
+Early stopping: seam metrics reached target.
+Saved polished model to checkpoints/polished_seam_model.pt
+Done. Now run compute_loss_components_v2.py and seam_rms_check_v3.py to measure changes.
+
+Process finished with exit code 0
