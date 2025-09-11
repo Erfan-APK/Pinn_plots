@@ -1,0 +1,27 @@
+/home/erfan/pinn_envs/pinn_1/bin/python3 /mnt/c/Users/Erfan/PycharmProjects/Test/MyClaude/InspiredByPaper/gptsecond/after The long run/second/withAdaptiveSampling/plot_diagnostics_quick.py 
+Using device: cuda
+GPU: NVIDIA GeForce RTX 3080
+Memory Allocated: 0.00 MB
+Solver created.
+Loaded checkpoint into solver.
+Domain: -2.0 6.0 -0.5 0.5
+Evaluating on coarse grid for diagnostics...
+Continuity (div u) RMS on coarse grid: 1.164445e-15
+Inlet expected U (solver.U) = 1.0
+Inlet u mean = 8.716155e-01, std = 2.807624e-01, RMS error to U = 3.087234e-01
+Inlet v mean (approx) = 0.000000e+00
+Outlet p mean = -9.133266e-04, std = 7.015555e-03
+Far-field p mean = -1.967438e-02, std = 5.128105e-02
+Global minib/maxes:
+ psi min,max = -0.4631640613079071 0.5963445901870728
+ p   min,max = -0.2116566151380539 0.679779589176178
+ u   min,max = -0.013512969017028796 1.5061752945184694
+ v   min,max = -0.2123284544795754 0.26026859134435687
+
+SUGGESTIONS:
+ - Inlet velocity deviates significantly from expected U. Possible causes: incorrect psi normalization, training drift, or plotting used wrong U. Check solver.U and psi anchor (psi = U*y).
+Wrote plots_out/streamlines_zoom.png
+Wrote plots_out/Cp_zoom.png
+Wrote plots_out/diag_summary.txt
+
+Process finished with exit code 0
