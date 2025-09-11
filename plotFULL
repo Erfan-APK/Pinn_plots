@@ -1,0 +1,373 @@
+# produce_plots_and_reports.py
+"""
+Produce plots:
+ - flow_field_streamlines.png (psi contours + streamlines)
+ - pressure_field.png (p contours)
+ - Cp_on_surface.png (Cp vs arc length)
+ - wake_velocity_profiles.png (u vs y at several downstream x probes)
+
+Usage:
+  python3 produce_plots_and_reports.py
+Runs using Pinn2 (auto-instantiates solver), loads checkpoints/best_model.pt.
+"""
+import os, sys, math, importlib, traceback
+import numpy as np
+import matplotlib.pyplot as plt
+import torch
+sys.path.insert(0, os.path.abspath('.'))
+
+OUT = "plots_out"
+NPY = os.path.join(OUT, "npy")
+os.makedirs(NPY, exist_ok=True)
+
+def auto_make_solver():
+    mod = importlib.import_module("Pinn2")
+    for fname in ('build_solver','create_solver','get_solver','make_solver','build'):
+        if hasattr(mod, fname):
+            try:
+                return getattr(mod, fname)()
+            except Exception:
+                pass
+    # fallback find class
+    import inspect
+    for nm,obj in inspect.getmembers(mod, inspect.isclass):
+        if obj.__module__ == mod.__name__ and any(k in nm.lower() for k in ('solver','cascade','pinn')):
+            try:
+                return obj()
+            except Exception:
+                pass
+    raise RuntimeError("Couldn't create solver automatically; edit script.")
+
+def load_checkpoint(solver, path='checkpoints/best_model.pt'):
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+    ck = torch.load(path, map_location='cpu')
+    state = None
+    if isinstance(ck, dict):
+        for k in ('model_state','model','state_dict','state'):
+            if k in ck:
+                state = ck[k]; break
+    if state is None and isinstance(ck, dict) and all(isinstance(x,str) for x in ck.keys()):
+        state = ck
+    if state is None:
+        raise RuntimeError("Could not find model state in checkpoint.")
+    solver.model.load_state_dict(state)
+    solver.model.to('cuda' if torch.cuda.is_available() else 'cpu')
+    solver.model.eval()
+
+def eval_on_grid(model, xs, ys, batch=10000, device='cuda'):
+    """Evaluate model( x , y ) on grid coordinates arrays (1D arrays for xs, ys).
+       Returns psi_grid (ny,nx) and p_grid.
+    """
+    nx = len(xs); ny = len(ys)
+    psi_grid = np.zeros((ny, nx), dtype=np.float32)
+    p_grid = np.zeros((ny, nx), dtype=np.float32)
+    dev = torch.device(device) if device else torch.device('cpu')
+
+    # evaluate row by row to keep memory small
+    for j, y in enumerate(ys):
+        # make column batch for this y
+        X = np.stack([xs, np.full_like(xs, y)], axis=1).astype(np.float32)
+        # chunked
+        out_psi = []; out_p = []
+        start = 0
+        while start < nx:
+            stop = min(nx, start + batch)
+            xb = torch.tensor(X[start:stop,0:1], device=dev)
+            yb = torch.tensor(X[start:stop,1:2], device=dev)
+            with torch.no_grad():
+                try:
+                    psi_t, p_t = model(xb, yb)
+                except Exception:
+                    # some models return (psi,p) as array/tensor or dict — try fallback
+                    res = model(xb, yb)
+                    psi_t = res[0]; p_t = res[1]
+                out_psi.append(psi_t.detach().cpu().numpy().ravel())
+                out_p.append(p_t.detach().cpu().numpy().ravel())
+            start = stop
+        psi_grid[j,:] = np.concatenate(out_psi)
+        p_grid[j,:] = np.concatenate(out_p)
+    return psi_grid, p_grid
+
+def compute_uv_from_psi_fd(psi_grid, xs, ys):
+    """Finite-difference u = dpsi/dy, v = -dpsi/dx.
+       psi_grid shape (ny,nx). xs, ys are 1D sorted arrays.
+    """
+    ny, nx = psi_grid.shape
+    dx = xs[1] - xs[0] if nx>1 else 1.0
+    dy = ys[1] - ys[0] if ny>1 else 1.0
+    # central differences
+    u = np.zeros_like(psi_grid)
+    v = np.zeros_like(psi_grid)
+    # dpsi/dy
+    u[1:-1,:] = (psi_grid[2:,:] - psi_grid[:-2,:]) / (2.0*dy)
+    u[0,:] = (psi_grid[1,:] - psi_grid[0,:]) / dy
+    u[-1,:] = (psi_grid[-1,:] - psi_grid[-2,:]) / dy
+    # dpsi/dx -> v = -dpsi/dx
+    v[:,1:-1] = -(psi_grid[:,2:] - psi_grid[:,:-2]) / (2.0*dx)
+    if nx>1:
+        v[:,0] = -(psi_grid[:,1] - psi_grid[:,0]) / dx
+        v[:,-1] = -(psi_grid[:,-1] - psi_grid[:,-2]) / dx
+    return u, v
+
+def try_get_surface_coords(solver):
+    # Try solver-provided helpers
+    for name in ('get_surface_coords','surface_arrays','get_surface_nodes','get_surface_points','compute_surface_arrays'):
+        if hasattr(solver, name):
+            try:
+                res = getattr(solver, name)()
+                # Accept either (xs,ys) or dict or numpy arrays
+                if isinstance(res, tuple) and len(res)>=2:
+                    sx = np.asarray(res[0]).ravel(); sy = np.asarray(res[1]).ravel()
+                    return sx, sy
+                if isinstance(res, dict):
+                    if 'x' in res and 'y' in res:
+                        return np.asarray(res['x']).ravel(), np.asarray(res['y']).ravel()
+            except Exception:
+                pass
+    # fallback files commonly saved earlier
+    candidates = ['surface_x.npy','surface_y.npy','surface_coords.npy','surface_points.npy','surface_xy.npy']
+    for fn in candidates:
+        if os.path.exists(fn):
+            try:
+                arr = np.load(fn, allow_pickle=True)
+                if arr.ndim==2 and arr.shape[1]>=2:
+                    return arr[:,0].ravel(), arr[:,1].ravel()
+                # some files may be tuple-like
+                if isinstance(arr, np.ndarray) and arr.dtype==object:
+                    arr = arr.tolist()
+                if isinstance(arr, (list,tuple)) and len(arr)>=2:
+                    return np.asarray(arr[0]).ravel(), np.asarray(arr[1]).ravel()
+            except Exception:
+                pass
+    return None, None
+
+def sample_u_v_at_points(model, pts, eps=1e-4, batch=20000, device='cuda'):
+    """Compute u and v at arbitrary points using finite-differences of psi predicted by model.
+       pts: (N,2) numpy array
+    """
+    dev = torch.device(device) if device else torch.device('cpu')
+    N = len(pts)
+    xs = pts[:,0].astype(np.float32); ys = pts[:,1].astype(np.float32)
+    u = np.zeros(N, dtype=np.float32); v = np.zeros(N, dtype=np.float32)
+    start = 0
+    while start < N:
+        stop = min(N, start + batch)
+        xb = torch.tensor(xs[start:stop].reshape(-1,1), device=dev)
+        yb = torch.tensor(ys[start:stop].reshape(-1,1), device=dev)
+        with torch.no_grad():
+            psi_c, p_c = model(xb, yb)
+            # psi at y+eps
+            psi_py, _ = model(xb, yb + eps)
+            psi_my, _ = model(xb, yb - eps)
+            psi_px, _ = model(xb + eps, yb)
+            psi_mx, _ = model(xb - eps, yb)
+        psi_c = psi_c.detach().cpu().numpy().ravel()
+        psi_py = psi_py.detach().cpu().numpy().ravel()
+        psi_my = psi_my.detach().cpu().numpy().ravel()
+        psi_px = psi_px.detach().cpu().numpy().ravel()
+        psi_mx = psi_mx.detach().cpu().numpy().ravel()
+        u[start:stop] = (psi_py - psi_my) / (2.0*eps)
+        v[start:stop] = -(psi_px - psi_mx) / (2.0*eps)
+        start = stop
+    return u, v
+
+def main():
+    try:
+        solver = auto_make_solver()
+        print("Solver created.")
+    except Exception as e:
+        print("ERROR creating solver:", e)
+        traceback.print_exc()
+        return
+
+    try:
+        load_checkpoint(solver, 'checkpoints/best_model.pt')
+        print("Loaded checkpoint.")
+    except Exception as e:
+        print("ERROR loading checkpoint:", e)
+        traceback.print_exc()
+        return
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = solver.model
+
+    # domain extents
+    x_min = float(getattr(solver, 'x_min', -2.0)); x_max = float(getattr(solver, 'x_max', 6.0))
+    y_min = float(getattr(solver, 'y_min', -0.5)); y_max = float(getattr(solver, 'y_max', 0.5))
+    print("Domain extents:", x_min, x_max, y_min, y_max)
+
+    # Grid for field plots
+    nx = 400; ny = 200
+    xs = np.linspace(x_min, x_max, nx, dtype=np.float32)
+    ys = np.linspace(y_min, y_max, ny, dtype=np.float32)
+
+    print("Evaluating model on grid... (this may take a minute)")
+    psi_grid, p_grid = eval_on_grid(model, xs, ys, batch=4000, device=device)
+    np.save(os.path.join(NPY, 'psi_grid.npy'), psi_grid)
+    np.save(os.path.join(NPY, 'p_grid.npy'), p_grid)
+
+    print("Computing u,v by finite differences...")
+    u_grid, v_grid = compute_uv_from_psi_fd(psi_grid, xs, ys)
+    np.save(os.path.join(NPY, 'u_grid.npy'), u_grid)
+    np.save(os.path.join(NPY, 'v_grid.npy'), v_grid)
+
+    # Plot streamfunction + streamlines
+    print("Plotting streamfunction & streamlines...")
+    X, Y = np.meshgrid(xs, ys)
+    plt.figure(figsize=(10,4))
+    levels = np.linspace(np.nanpercentile(psi_grid,2), np.nanpercentile(psi_grid,98), 60)
+    # new robust version: ensure strictly uniform 1D coords and float64 arrays
+    # re-create truly uniform coordinates (avoids tiny floating rounding issues)
+    xs_uniform = np.linspace(xs[0], xs[-1], len(xs), dtype=np.float64)
+    ys_uniform = np.linspace(ys[0], ys[-1], len(ys), dtype=np.float64)
+
+    # convert U/V to float64 to avoid dtype issues
+    u_plot = np.array(u_grid, dtype=np.float64)
+    v_plot = np.array(v_grid, dtype=np.float64)
+
+    plt.contour(X, Y, psi_grid, levels=levels, linewidths=0.5, cmap='viridis')
+
+    # streamplot accepts 1D xs/ys that are equally spaced; use the uniform arrays
+    plt.streamplot(xs_uniform, ys_uniform, u_plot, v_plot, density=1.0, arrowsize=1)
+
+    plt.title("Streamfunction contours + streamlines (u,v from FD)")
+    plt.xlabel("x"); plt.ylabel("y")
+    plt.colorbar()
+    out1 = os.path.join(OUT, "flow_field_streamlines.png")
+    plt.tight_layout(); plt.savefig(out1, dpi=200); plt.close()
+    print("Wrote", out1)
+
+    # Pressure contour
+    print("Plotting pressure field...")
+    plt.figure(figsize=(10,4))
+    levels = np.linspace(np.nanpercentile(p_grid,2), np.nanpercentile(p_grid,98), 60)
+    cs = plt.contourf(X, Y, p_grid, levels=levels, cmap='coolwarm')
+    plt.colorbar(cs, label='p')
+    plt.title("Pressure field (p)")
+    plt.xlabel("x"); plt.ylabel("y")
+    out2 = os.path.join(OUT, "pressure_field.png")
+    plt.tight_layout(); plt.savefig(out2, dpi=200); plt.close()
+    print("Wrote", out2)
+
+    # Try to get surface coords and compute Cp
+    print("Attempting to obtain surface coordinates...")
+    sx, sy = try_get_surface_coords(solver)
+    if sx is None or sy is None:
+        print("Surface coordinates not found automatically; looking for saved files in working dir.")
+        # attempt common saved names inside final_archive or project; try loads already in NPY folder
+        for fn in (os.path.join(NPY,'surface_x.npy'), 'surface_x.npy', 'surface_coords.npy'):
+            if os.path.exists(fn):
+                try:
+                    arr = np.load(fn, allow_pickle=True)
+                    if arr.ndim==1 and arr.size>0:
+                        # try paired arrays
+                        sx = np.load(os.path.join(NPY,'surface_x.npy')) if os.path.exists(os.path.join(NPY,'surface_x.npy')) else None
+                    break
+                except Exception:
+                    pass
+    if sx is None or sy is None:
+        print("Could not find surface coordinates. Cp plot skipped. If you have surface_x/y arrays, place them as 'surface_x.npy' and 'surface_y.npy' in project root.")
+    else:
+        sx = np.asarray(sx).ravel(); sy = np.asarray(sy).ravel()
+        print("Surface points found:", len(sx))
+        pts = np.stack([sx, sy], axis=1)
+        p_s = []
+        # evaluate p at surface points in batches
+        B = 4000
+        dev = torch.device(device)
+        for i in range(0, len(pts), B):
+            block = pts[i:i+B]
+            xb = torch.tensor(block[:,0].reshape(-1,1), device=dev)
+            yb = torch.tensor(block[:,1].reshape(-1,1), device=dev)
+            with torch.no_grad():
+                psi_t, p_t = model(xb, yb)
+            p_s.append(p_t.detach().cpu().numpy().ravel())
+        p_s = np.concatenate(p_s)
+        np.save(os.path.join(NPY, 'surface_x.npy'), sx)
+        np.save(os.path.join(NPY, 'surface_y.npy'), sy)
+        np.save(os.path.join(NPY, 'p_surface.npy'), p_s)
+        # compute arc length s
+        ds = np.sqrt(np.diff(sx)**2 + np.diff(sy)**2)
+        s = np.concatenate([[0], np.cumsum(ds)])
+        # Cp: assume rho = 1, U = solver.U if present else 1.0, p_ref = 0 (outlet anchor)
+        U = float(getattr(solver, 'U', 1.0))
+        rho = 1.0
+        p_ref = 0.0
+        Cp = (p_s - p_ref) / (0.5 * rho * U**2)
+        np.save(os.path.join(NPY, 'Cp_surface.npy'), Cp)
+        # Plot Cp vs s
+        plt.figure(figsize=(7,3))
+        plt.plot(s, Cp, '-o', markersize=2)
+        plt.gca().invert_yaxis()
+        plt.xlabel("s (arc length)")
+        plt.ylabel("Cp")
+        plt.title("Cp on surface")
+        out3 = os.path.join(OUT, "Cp_on_surface.png")
+        plt.tight_layout(); plt.savefig(out3, dpi=180); plt.close()
+        print("Wrote", out3)
+
+    # Forces: try solver.compute_forces()
+    print("Attempting to compute forces (Cl, Cd) via solver.compute_forces()...")
+    forces = None
+    try:
+        forces = solver.compute_forces()
+    except TypeError:
+        try:
+            forces = solver.compute_forces(800)
+        except Exception:
+            forces = None
+    report_lines = []
+    if isinstance(forces, (list,tuple)) and len(forces) >= 2:
+        try:
+            Cl = float(forces[0]); Cd_raw = float(forces[1]); Cd = abs(Cd_raw)
+            report_lines.append(f"Cl = {Cl:.8e}")
+            report_lines.append(f"Cd_raw = {Cd_raw:.8e}")
+            report_lines.append(f"Cd_mag = {Cd:.8e}")
+            print("Forces:", report_lines[-3:])
+        except Exception:
+            report_lines.append("Could not parse forces output.")
+    else:
+        report_lines.append("compute_forces() not available or returned unexpected format. Returned repr:")
+        report_lines.append(repr(forces)[:1000])
+    # save report
+    with open(os.path.join(OUT, "report.txt"), "w") as f:
+        f.write("\n".join(report_lines))
+    print("Wrote report:", os.path.join(OUT, "report.txt"))
+
+    # Wake velocity profiles: choose downstream x probe positions
+    print("Sampling wake velocity profiles (u vs y) at downstream x positions...")
+    # choose probes in the downstream half of domain
+    x_probes = np.linspace(x_min + 0.6*(x_max-x_min), x_max - 0.05*(x_max-x_min), 4)
+    Y = np.linspace(y_min, y_max, 400)
+    wake_profiles = []  # list of (x_probe, y array, u array)
+    for xp in x_probes:
+        pts = np.stack([np.full_like(Y, xp), Y], axis=1)
+        uvals, vvals = sample_u_v_at_points(model, pts, eps=1e-5, batch=4000, device=device)
+        wake_profiles.append((xp, Y, uvals))
+    # save wake profiles
+    # Save wake profiles into a compressed .npz with explicit keys per probe
+    npz_dict = {}
+    for i, (xp, Y, uvals) in enumerate(wake_profiles):
+        npz_dict[f'x_{i}'] = np.array([xp], dtype=np.float32)
+        npz_dict[f'y_{i}'] = Y.astype(np.float32)
+        npz_dict[f'u_{i}'] = uvals.astype(np.float32)
+    np.savez_compressed(os.path.join(NPY, 'wake_profiles.npz'), **npz_dict)
+    print("Wrote", os.path.join(NPY, 'wake_profiles.npz'))
+
+    # plot
+    plt.figure(figsize=(6,4))
+    for xp, Y, uvals in wake_profiles:
+        plt.plot(uvals, Y, label=f"x={xp:.2f}")
+    plt.xlabel("u (velocity)")
+    plt.ylabel("y")
+    plt.legend()
+    plt.title("Wake velocity profiles (u vs y)")
+    out4 = os.path.join(OUT, "wake_velocity_profiles.png")
+    plt.tight_layout(); plt.savefig(out4, dpi=180); plt.close()
+    print("Wrote", out4)
+
+    print("\nAll done. Outputs saved under", OUT, "and", NPY)
+
+if __name__ == "__main__":
+    main()
