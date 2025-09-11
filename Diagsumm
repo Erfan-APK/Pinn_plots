@@ -1,0 +1,7 @@
+continuity_div_rms = 1.16444473e-15
+inlet_u_mean = 8.71615452e-01
+inlet_u_rms_err_to_U = 3.08723408e-01
+outlet_p_mean = -9.13326591e-04
+farfield_p_mean = -1.96743773e-02
+global_psi_min_max = -4.631641e-01, 5.963446e-01
+global_p_min_max = -2.116566e-01, 6.797796e-01
